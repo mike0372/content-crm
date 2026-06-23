@@ -1,0 +1,61 @@
+{
+  "id": "idea_66lm4mmroib",
+  "stage": "idea",
+  "status": "TO_SHOOT",
+  "title": "Memory feature deep dive",
+  "pillar": "New Features",
+  "hookType": "",
+  "format": "Talking head",
+  "lengthTarget": "",
+  "postingWindow": "",
+  "sourceUrl": "",
+  "demandSignal": {
+    "text": "",
+    "source": "",
+    "date": ""
+  },
+  "recognitionScore": 5,
+  "hook": {
+    "line1": "Claude finally remembers you",
+    "line2": "",
+    "firstTwoSeconds": "",
+    "scorecard": {
+      "recognition": false,
+      "openLoop": false,
+      "firstTwoS": false,
+      "specificity": false,
+      "identity": false
+    }
+  },
+  "script": [],
+  "captions": [],
+  "engagement": {
+    "triggerType": "",
+    "triggerText": "",
+    "firstComment": "",
+    "endCard": ""
+  },
+  "checklist": [],
+  "results": {
+    "viewsIG": null,
+    "viewsFB": null,
+    "skipRate": null,
+    "topSource": "",
+    "likes": null,
+    "comments": null,
+    "saves": null,
+    "follows": null,
+    "verdict": "",
+    "lesson": ""
+  },
+  "seriesName": "",
+  "partNumber": null,
+  "statusHistory": [
+    {
+      "status": "TO_SHOOT",
+      "timestamp": "2026-06-13T17:29:47.987Z"
+    }
+  ],
+  "createdAt": "2026-06-13T17:29:47.987Z",
+  "updatedAt": "2026-06-13T17:29:47.987Z"
+}

@@ -1,0 +1,179 @@
+{
+  "id": "vid_bdtgt03rohi",
+  "title": "Opus 4.8 vs the rest — real test",
+  "pillar": "Comparisons",
+  "format": "Talking head",
+  "lengthTarget": "35s",
+  "postingWindow": "Evening (6-8pm)",
+  "sourceUrl": "",
+  "status": "TO_SHOOT",
+  "statusHistory": [
+    {
+      "status": "TO_SHOOT",
+      "timestamp": "2026-06-13T12:29:47.958Z"
+    }
+  ],
+  "hook": {
+    "line1": "I gave 3 models the same brutal task",
+    "line2": "One won",
+    "firstTwoSeconds": "Split screen, three outputs racing to fill.",
+    "scorecard": {
+      "recognition": true,
+      "openLoop": true,
+      "firstTwoS": true,
+      "specificity": false,
+      "identity": false
+    }
+  },
+  "script": [
+    {
+      "id": "beat_efwasx9rohi",
+      "timestamp": "0:00",
+      "label": "HOOK",
+      "content": "",
+      "retentionNote": ""
+    },
+    {
+      "id": "beat_nm50dwrrohi",
+      "timestamp": "0:03",
+      "label": "RE-HOOK",
+      "content": "",
+      "retentionNote": ""
+    },
+    {
+      "id": "beat_e320woirohi",
+      "timestamp": "0:06",
+      "label": "DEMO",
+      "content": "",
+      "retentionNote": ""
+    },
+    {
+      "id": "beat_o11njlgrohi",
+      "timestamp": "0:20",
+      "label": "RESULT",
+      "content": "",
+      "retentionNote": ""
+    },
+    {
+      "id": "beat_wwa7j4trohi",
+      "timestamp": "0:28",
+      "label": "CTA",
+      "content": "",
+      "retentionNote": ""
+    }
+  ],
+  "captions": [
+    {
+      "variant": "A — Direct",
+      "text": "",
+      "hashtags": "",
+      "recommended": true
+    },
+    {
+      "variant": "B — Story",
+      "text": "",
+      "hashtags": "",
+      "recommended": false
+    },
+    {
+      "variant": "C — Bold claim",
+      "text": "",
+      "hashtags": "",
+      "recommended": false
+    }
+  ],
+  "engagement": {
+    "triggerType": "",
+    "triggerText": "",
+    "firstComment": "",
+    "endCard": ""
+  },
+  "checklist": [
+    {
+      "id": "chk_5bb0in2rohi",
+      "label": "Charge phone / camera to 100%",
+      "group": "Setup — Gear",
+      "checked": false
+    },
+    {
+      "id": "chk_2mq91iqrohi",
+      "label": "Clear storage (need 10GB+)",
+      "group": "Setup — Gear",
+      "checked": false
+    },
+    {
+      "id": "chk_cb31cetrohi",
+      "label": "Mount tripod at eye level",
+      "group": "Setup — Gear",
+      "checked": false
+    },
+    {
+      "id": "chk_qbd26ojrohi",
+      "label": "Clip on lav mic, test audio",
+      "group": "Setup — Gear",
+      "checked": false
+    },
+    {
+      "id": "chk_1k9w8mjrohi",
+      "label": "Set lighting — key light 45°",
+      "group": "Setup — Lighting",
+      "checked": false
+    },
+    {
+      "id": "chk_2wjexpwrohi",
+      "label": "Close blinds, kill mixed color temp",
+      "group": "Setup — Lighting",
+      "checked": false
+    },
+    {
+      "id": "chk_rh2g4d9rohi",
+      "label": "Frame vertical 9:16, headroom check",
+      "group": "Setup — Framing",
+      "checked": false
+    },
+    {
+      "id": "chk_p6v3m3orohi",
+      "label": "Read hook out loud 3x",
+      "group": "Performance",
+      "checked": false
+    },
+    {
+      "id": "chk_0ip2g6wrohi",
+      "label": "Record 3 takes of first 2 seconds",
+      "group": "Performance",
+      "checked": false
+    },
+    {
+      "id": "chk_6u6hjr6rohi",
+      "label": "Record full A-roll",
+      "group": "Performance",
+      "checked": false
+    },
+    {
+      "id": "chk_fv8zgq8rohi",
+      "label": "Capture B-roll / screen demo",
+      "group": "Performance",
+      "checked": false
+    },
+    {
+      "id": "chk_a4491ptrohi",
+      "label": "Back up footage to drive",
+      "group": "Wrap",
+      "checked": false
+    }
+  ],
+  "results": {
+    "viewsIG": null,
+    "viewsFB": null,
+    "skipRate": null,
+    "topSource": "",
+    "likes": null,
+    "comments": null,
+    "saves": null,
+    "follows": null,
+    "verdict": "",
+    "lesson": ""
+  },
+  "createdAt": "2026-06-13T12:29:47.958Z",
+  "updatedAt": "2026-06-13T12:29:47.958Z"
+}

@@ -1,0 +1,61 @@
+{
+  "id": "idea_vwzqjroroia",
+  "stage": "idea",
+  "status": "TO_SHOOT",
+  "title": "Hooks ranked by retention",
+  "pillar": "Tutorials",
+  "hookType": "",
+  "format": "Talking head",
+  "lengthTarget": "",
+  "postingWindow": "",
+  "sourceUrl": "https://example.com/hooks",
+  "demandSignal": {
+    "text": "",
+    "source": "https://example.com/hooks",
+    "date": ""
+  },
+  "recognitionScore": 5,
+  "hook": {
+    "line1": "I tested 50 hooks so you don't have to",
+    "line2": "",
+    "firstTwoSeconds": "",
+    "scorecard": {
+      "recognition": false,
+      "openLoop": false,
+      "firstTwoS": false,
+      "specificity": false,
+      "identity": false
+    }
+  },
+  "script": [],
+  "captions": [],
+  "engagement": {
+    "triggerType": "",
+    "triggerText": "",
+    "firstComment": "",
+    "endCard": ""
+  },
+  "checklist": [],
+  "results": {
+    "viewsIG": null,
+    "viewsFB": null,
+    "skipRate": null,
+    "topSource": "",
+    "likes": null,
+    "comments": null,
+    "saves": null,
+    "follows": null,
+    "verdict": "",
+    "lesson": ""
+  },
+  "seriesName": "",
+  "partNumber": null,
+  "statusHistory": [
+    {
+      "status": "TO_SHOOT",
+      "timestamp": "2026-06-13T17:29:47.986Z"
+    }
+  ],
+  "createdAt": "2026-06-13T17:29:47.986Z",
+  "updatedAt": "2026-06-13T17:29:47.986Z"
+}

@@ -1,0 +1,189 @@
+{
+  "id": "vid_wyw93m3rohi",
+  "stage": "production",
+  "status": "TO_SHOOT",
+  "title": "Stop writing prompts like it's 2023",
+  "pillar": "Tutorials",
+  "hookType": "",
+  "format": "Talking head",
+  "lengthTarget": "40s",
+  "postingWindow": "Evening (6-8pm)",
+  "sourceUrl": "",
+  "demandSignal": {
+    "text": "",
+    "source": "",
+    "date": ""
+  },
+  "recognitionScore": 3,
+  "hook": {
+    "line1": "Your prompts are stuck in 2023",
+    "line2": "Do this",
+    "firstTwoSeconds": "Old prompt crossed out in red, new one slides in.",
+    "scorecard": {
+      "recognition": true,
+      "openLoop": true,
+      "firstTwoS": false,
+      "specificity": false,
+      "identity": false
+    }
+  },
+  "script": [
+    {
+      "id": "beat_qtvqmexrohi",
+      "timestamp": "0:00",
+      "label": "HOOK",
+      "content": "",
+      "retentionNote": ""
+    },
+    {
+      "id": "beat_vthk4uvrohi",
+      "timestamp": "0:03",
+      "label": "RE-HOOK",
+      "content": "",
+      "retentionNote": ""
+    },
+    {
+      "id": "beat_yedwik6rohi",
+      "timestamp": "0:06",
+      "label": "DEMO",
+      "content": "",
+      "retentionNote": ""
+    },
+    {
+      "id": "beat_52vrkazrohi",
+      "timestamp": "0:20",
+      "label": "RESULT",
+      "content": "",
+      "retentionNote": ""
+    },
+    {
+      "id": "beat_3o9lxzwrohi",
+      "timestamp": "0:28",
+      "label": "CTA",
+      "content": "",
+      "retentionNote": ""
+    }
+  ],
+  "captions": [
+    {
+      "variant": "A — Direct",
+      "text": "",
+      "hashtags": "",
+      "recommended": true
+    },
+    {
+      "variant": "B — Story",
+      "text": "",
+      "hashtags": "",
+      "recommended": false
+    },
+    {
+      "variant": "C — Bold claim",
+      "text": "",
+      "hashtags": "",
+      "recommended": false
+    }
+  ],
+  "engagement": {
+    "triggerType": "",
+    "triggerText": "",
+    "firstComment": "",
+    "endCard": ""
+  },
+  "checklist": [
+    {
+      "id": "chk_h7tynrfrohi",
+      "label": "Charge phone / camera to 100%",
+      "group": "Setup — Gear",
+      "checked": false
+    },
+    {
+      "id": "chk_k384qv2rohi",
+      "label": "Clear storage (need 10GB+)",
+      "group": "Setup — Gear",
+      "checked": false
+    },
+    {
+      "id": "chk_s6e27lmrohi",
+      "label": "Mount tripod at eye level",
+      "group": "Setup — Gear",
+      "checked": false
+    },
+    {
+      "id": "chk_gq7zq0urohi",
+      "label": "Clip on lav mic, test audio",
+      "group": "Setup — Gear",
+      "checked": false
+    },
+    {
+      "id": "chk_2nxn5xprohi",
+      "label": "Set lighting — key light 45°",
+      "group": "Setup — Lighting",
+      "checked": false
+    },
+    {
+      "id": "chk_1s0zvf6rohi",
+      "label": "Close blinds, kill mixed color temp",
+      "group": "Setup — Lighting",
+      "checked": false
+    },
+    {
+      "id": "chk_dzuwswerohi",
+      "label": "Frame vertical 9:16, headroom check",
+      "group": "Setup — Framing",
+      "checked": false
+    },
+    {
+      "id": "chk_4uikcs2rohi",
+      "label": "Read hook out loud 3x",
+      "group": "Performance",
+      "checked": false
+    },
+    {
+      "id": "chk_8u0ud2rrohi",
+      "label": "Record 3 takes of first 2 seconds",
+      "group": "Performance",
+      "checked": false
+    },
+    {
+      "id": "chk_8lf3wwerohi",
+      "label": "Record full A-roll",
+      "group": "Performance",
+      "checked": false
+    },
+    {
+      "id": "chk_dcmp0v2rohi",
+      "label": "Capture B-roll / screen demo",
+      "group": "Performance",
+      "checked": false
+    },
+    {
+      "id": "chk_laa2hf7rohi",
+      "label": "Back up footage to drive",
+      "group": "Wrap",
+      "checked": false
+    }
+  ],
+  "results": {
+    "viewsIG": null,
+    "viewsFB": null,
+    "skipRate": null,
+    "topSource": "",
+    "likes": null,
+    "comments": null,
+    "saves": null,
+    "follows": null,
+    "verdict": "",
+    "lesson": ""
+  },
+  "seriesName": "",
+  "partNumber": null,
+  "statusHistory": [
+    {
+      "status": "TO_SHOOT",
+      "timestamp": "2026-06-13T16:29:47.958Z"
+    }
+  ],
+  "createdAt": "2026-06-13T16:29:47.958Z",
+  "updatedAt": "2026-06-13T16:29:47.958Z"
+}

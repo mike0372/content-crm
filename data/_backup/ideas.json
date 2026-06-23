@@ -1,0 +1,47 @@
+[
+  {
+    "id": "idea_vwzqjroroia",
+    "title": "Hooks ranked by retention",
+    "hookDraft": "I tested 50 hooks so you don't have to",
+    "pillar": "Tutorials",
+    "recognitionScore": 5,
+    "sourceUrl": "https://example.com/hooks",
+    "createdAt": "2026-06-13T17:29:47.986Z"
+  },
+  {
+    "id": "idea_e5j4eqqroia",
+    "title": "Claude Code custom slash commands",
+    "hookDraft": "Build your own /command in 2 min",
+    "pillar": "Claude Code",
+    "recognitionScore": 4,
+    "sourceUrl": "",
+    "createdAt": "2026-06-13T17:29:47.986Z"
+  },
+  {
+    "id": "idea_6ewm980roia",
+    "title": "Agent vs workflow — when to use which",
+    "hookDraft": "Stop building agents you don't need",
+    "pillar": "Agents",
+    "recognitionScore": 4,
+    "sourceUrl": "",
+    "createdAt": "2026-06-13T17:29:47.986Z"
+  },
+  {
+    "id": "idea_q5yivm5roib",
+    "title": "The cheapest model that still ships",
+    "hookDraft": "Haiku did this and I'm shocked",
+    "pillar": "Comparisons",
+    "recognitionScore": 3,
+    "sourceUrl": "",
+    "createdAt": "2026-06-13T17:29:47.987Z"
+  },
+  {
+    "id": "idea_66lm4mmroib",
+    "title": "Memory feature deep dive",
+    "hookDraft": "Claude finally remembers you",
+    "pillar": "New Features",
+    "recognitionScore": 5,
+    "sourceUrl": "",
+    "createdAt": "2026-06-13T17:29:47.987Z"
+  }
+]

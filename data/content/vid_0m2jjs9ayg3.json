@@ -1,0 +1,189 @@
+{
+  "id": "vid_0m2jjs9ayg3",
+  "stage": "production",
+  "status": "TO_SHOOT",
+  "title": "Untitled Reel",
+  "pillar": "Claude Code",
+  "hookType": "",
+  "format": "Screen recording",
+  "lengthTarget": "30s",
+  "postingWindow": "Evening (6-8pm)",
+  "sourceUrl": "",
+  "demandSignal": {
+    "text": "",
+    "source": "",
+    "date": ""
+  },
+  "recognitionScore": 3,
+  "hook": {
+    "line1": "",
+    "line2": "",
+    "firstTwoSeconds": "",
+    "scorecard": {
+      "recognition": false,
+      "openLoop": false,
+      "firstTwoS": false,
+      "specificity": false,
+      "identity": false
+    }
+  },
+  "script": [
+    {
+      "id": "beat_6b03drmayg3",
+      "timestamp": "0:00",
+      "label": "HOOK",
+      "content": "",
+      "retentionNote": ""
+    },
+    {
+      "id": "beat_telmzcxayg3",
+      "timestamp": "0:03",
+      "label": "RE-HOOK",
+      "content": "",
+      "retentionNote": ""
+    },
+    {
+      "id": "beat_6fzqo8aayg3",
+      "timestamp": "0:06",
+      "label": "DEMO",
+      "content": "",
+      "retentionNote": ""
+    },
+    {
+      "id": "beat_pz6bfc4ayg3",
+      "timestamp": "0:20",
+      "label": "RESULT",
+      "content": "",
+      "retentionNote": ""
+    },
+    {
+      "id": "beat_8bd3q3layg3",
+      "timestamp": "0:28",
+      "label": "CTA",
+      "content": "",
+      "retentionNote": ""
+    }
+  ],
+  "captions": [
+    {
+      "variant": "A — Direct",
+      "text": "",
+      "hashtags": "",
+      "recommended": true
+    },
+    {
+      "variant": "B — Story",
+      "text": "",
+      "hashtags": "",
+      "recommended": false
+    },
+    {
+      "variant": "C — Bold claim",
+      "text": "",
+      "hashtags": "",
+      "recommended": false
+    }
+  ],
+  "engagement": {
+    "triggerType": "",
+    "triggerText": "",
+    "firstComment": "",
+    "endCard": ""
+  },
+  "checklist": [
+    {
+      "id": "chk_47rt69eayg3",
+      "label": "Charge phone / camera to 100%",
+      "group": "Setup — Gear",
+      "checked": false
+    },
+    {
+      "id": "chk_7wemqywayg3",
+      "label": "Clear storage (need 10GB+)",
+      "group": "Setup — Gear",
+      "checked": false
+    },
+    {
+      "id": "chk_6qrbge7ayg3",
+      "label": "Mount tripod at eye level",
+      "group": "Setup — Gear",
+      "checked": false
+    },
+    {
+      "id": "chk_umfj0l0ayg3",
+      "label": "Clip on lav mic, test audio",
+      "group": "Setup — Gear",
+      "checked": false
+    },
+    {
+      "id": "chk_jud9wqhayg3",
+      "label": "Set lighting — key light 45°",
+      "group": "Setup — Lighting",
+      "checked": false
+    },
+    {
+      "id": "chk_34xnqd0ayg3",
+      "label": "Close blinds, kill mixed color temp",
+      "group": "Setup — Lighting",
+      "checked": false
+    },
+    {
+      "id": "chk_bcvff4qayg3",
+      "label": "Frame vertical 9:16, headroom check",
+      "group": "Setup — Framing",
+      "checked": false
+    },
+    {
+      "id": "chk_45qkci6ayg3",
+      "label": "Read hook out loud 3x",
+      "group": "Performance",
+      "checked": false
+    },
+    {
+      "id": "chk_xsysf72ayg3",
+      "label": "Record 3 takes of first 2 seconds",
+      "group": "Performance",
+      "checked": false
+    },
+    {
+      "id": "chk_ldogcr3ayg3",
+      "label": "Record full A-roll",
+      "group": "Performance",
+      "checked": false
+    },
+    {
+      "id": "chk_h6ot646ayg3",
+      "label": "Capture B-roll / screen demo",
+      "group": "Performance",
+      "checked": false
+    },
+    {
+      "id": "chk_u5p5u5tayg3",
+      "label": "Back up footage to drive",
+      "group": "Wrap",
+      "checked": false
+    }
+  ],
+  "results": {
+    "viewsIG": null,
+    "viewsFB": null,
+    "skipRate": null,
+    "topSource": "",
+    "likes": null,
+    "comments": null,
+    "saves": null,
+    "follows": null,
+    "verdict": "",
+    "lesson": ""
+  },
+  "seriesName": "",
+  "partNumber": null,
+  "statusHistory": [
+    {
+      "status": "TO_SHOOT",
+      "timestamp": "2026-06-15T01:00:21.603Z"
+    }
+  ],
+  "createdAt": "2026-06-15T01:00:21.603Z",
+  "updatedAt": "2026-06-15T01:00:21.604Z"
+}

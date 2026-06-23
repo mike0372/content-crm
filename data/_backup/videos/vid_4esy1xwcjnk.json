@@ -1,0 +1,179 @@
+{
+  "id": "vid_4esy1xwcjnk",
+  "title": "Untitled Reel",
+  "pillar": "Claude Code",
+  "format": "Screen recording",
+  "lengthTarget": "30s",
+  "postingWindow": "Midday (11am-1pm)",
+  "sourceUrl": "",
+  "status": "TO_SHOOT",
+  "statusHistory": [
+    {
+      "status": "TO_SHOOT",
+      "timestamp": "2026-06-19T14:40:05.503Z"
+    }
+  ],
+  "hook": {
+    "line1": "",
+    "line2": "",
+    "firstTwoSeconds": "",
+    "scorecard": {
+      "recognition": false,
+      "openLoop": false,
+      "firstTwoS": false,
+      "specificity": false,
+      "identity": false
+    }
+  },
+  "script": [
+    {
+      "id": "beat_mjq5poocjnk",
+      "timestamp": "0:00",
+      "label": "HOOK",
+      "content": "",
+      "retentionNote": ""
+    },
+    {
+      "id": "beat_dfxt5vecjnk",
+      "timestamp": "0:03",
+      "label": "RE-HOOK",
+      "content": "",
+      "retentionNote": ""
+    },
+    {
+      "id": "beat_ibwo3qbcjnk",
+      "timestamp": "0:06",
+      "label": "DEMO",
+      "content": "",
+      "retentionNote": ""
+    },
+    {
+      "id": "beat_gsierj5cjnk",
+      "timestamp": "0:20",
+      "label": "RESULT",
+      "content": "",
+      "retentionNote": ""
+    },
+    {
+      "id": "beat_1apsa7acjnk",
+      "timestamp": "0:28",
+      "label": "CTA",
+      "content": "",
+      "retentionNote": ""
+    }
+  ],
+  "captions": [
+    {
+      "variant": "A — Direct",
+      "text": "",
+      "hashtags": "",
+      "recommended": true
+    },
+    {
+      "variant": "B — Story",
+      "text": "",
+      "hashtags": "",
+      "recommended": false
+    },
+    {
+      "variant": "C — Bold claim",
+      "text": "",
+      "hashtags": "",
+      "recommended": false
+    }
+  ],
+  "engagement": {
+    "triggerType": "",
+    "triggerText": "",
+    "firstComment": "",
+    "endCard": ""
+  },
+  "checklist": [
+    {
+      "id": "chk_7peyyojcjnk",
+      "label": "Charge phone / camera to 100%",
+      "group": "Setup — Gear",
+      "checked": false
+    },
+    {
+      "id": "chk_1e5ryodcjnk",
+      "label": "Clear storage (need 10GB+)",
+      "group": "Setup — Gear",
+      "checked": false
+    },
+    {
+      "id": "chk_zuifq9mcjnk",
+      "label": "Mount tripod at eye level",
+      "group": "Setup — Gear",
+      "checked": false
+    },
+    {
+      "id": "chk_4sp47bvcjnk",
+      "label": "Clip on lav mic, test audio",
+      "group": "Setup — Gear",
+      "checked": false
+    },
+    {
+      "id": "chk_f2xprp3cjnk",
+      "label": "Set lighting — key light 45°",
+      "group": "Setup — Lighting",
+      "checked": false
+    },
+    {
+      "id": "chk_aqhfc7bcjnk",
+      "label": "Close blinds, kill mixed color temp",
+      "group": "Setup — Lighting",
+      "checked": false
+    },
+    {
+      "id": "chk_qd3znwtcjnk",
+      "label": "Frame vertical 9:16, headroom check",
+      "group": "Setup — Framing",
+      "checked": false
+    },
+    {
+      "id": "chk_j750yhrcjnk",
+      "label": "Read hook out loud 3x",
+      "group": "Performance",
+      "checked": false
+    },
+    {
+      "id": "chk_0cthdjxcjnk",
+      "label": "Record 3 takes of first 2 seconds",
+      "group": "Performance",
+      "checked": false
+    },
+    {
+      "id": "chk_kxizh5hcjnk",
+      "label": "Record full A-roll",
+      "group": "Performance",
+      "checked": false
+    },
+    {
+      "id": "chk_d8u0k35cjnk",
+      "label": "Capture B-roll / screen demo",
+      "group": "Performance",
+      "checked": false
+    },
+    {
+      "id": "chk_hvmxrj3cjnk",
+      "label": "Back up footage to drive",
+      "group": "Wrap",
+      "checked": false
+    }
+  ],
+  "results": {
+    "viewsIG": null,
+    "viewsFB": null,
+    "skipRate": null,
+    "topSource": "",
+    "likes": null,
+    "comments": null,
+    "saves": null,
+    "follows": null,
+    "verdict": "",
+    "lesson": ""
+  },
+  "createdAt": "2026-06-19T14:40:05.503Z",
+  "updatedAt": "2026-06-19T14:40:05.516Z"
+}

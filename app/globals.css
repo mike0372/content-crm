@@ -1,0 +1,122 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* AutoPilot AI brand CSS variables */
+  --bg:         #050f1e;
+  --surface:    #091828;
+  --surface2:   #0e2236;
+  --border:     #132b44;
+
+  --text:       #ffffff;
+  --text-muted: #9ca3af;
+  --text-dim:   #6b7280;
+
+  --blue-dark:  #2563eb;
+  --blue:       #3b82f6;
+  --blue-light: #60a5fa;
+  --cyan:       #06b6d4;
+  --sky:        #0ea5e9;
+  --sky-dark:   #0284c7;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background-color: #050f1e;
+  min-height: 100vh;
+}
+
+/* faint white grid overlay — matches autopilotai.site hero/cta sections */
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.025) 1px, transparent 1px);
+  background-size: 40px 40px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 0%, black 0%, transparent 75%);
+}
+
+/* subtle grain overlay for texture */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.022;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+/* scrollbars */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+*::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+*::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 9999px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.22);
+  background-clip: content-box;
+}
+
+@layer utilities {
+  .text-balance {
+    text-wrap: balance;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  /* Instrument Serif italic gradient accent — use as <em class="highlight"> inside headings */
+  .highlight {
+    font-family: var(--font-serif), serif;
+    font-style: italic;
+    font-weight: 400;
+    background: linear-gradient(135deg, var(--blue) 0%, var(--cyan) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    letter-spacing: -0.02em;
+  }
+
+  /* Brand eyebrow label — Geist Mono uppercase with blue accent */
+  .eyebrow {
+    font-family: var(--font-mono), monospace;
+    font-size: 11.5px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--blue);
+  }
+}
+
+/* print styling for PDF / browser print fallback */
+@media print {
+  aside,
+  .no-print {
+    display: none !important;
+  }
+  main {
+    margin-left: 0 !important;
+  }
+}
