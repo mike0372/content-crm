@@ -84,8 +84,10 @@ function Donut({ counts }: { counts: Record<Pillar, number> }) {
               stroke={PILLAR_HEX[p]}
               strokeWidth={16}
               fill="transparent"
-              strokeDasharray={`${seg} ${circ - seg}`}
-              strokeDashoffset={-acc}
+              {...({
+                strokeDasharray: `${seg} ${circ - seg}`,
+                strokeDashoffset: -acc,
+              } as object)}
             />
           );
           acc += seg;
@@ -227,7 +229,7 @@ function VideoPage({ v }: { v: Video }) {
       <View style={{ marginBottom: 12 }}>
         {v.checklist.map((item) => (
           <View key={item.id} style={{ flexDirection: "row", alignItems: "center", marginBottom: 3 }}>
-            <View style={[s.checkbox, item.checked && { backgroundColor: C.ink }]} />
+            <View style={[s.checkbox, item.checked ? { backgroundColor: C.ink } : {}]} />
             <Text style={{ color: C.faint, width: 90, fontSize: 8 }}>{item.group}</Text>
             <Text>{item.label}</Text>
           </View>

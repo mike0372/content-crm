@@ -8,10 +8,12 @@ export default async function VideoPage({
   params,
   searchParams,
 }: {
-  params: { id: string };
-  searchParams: { tab?: string };
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
-  const video = await getVideo(params.id);
+  const { id } = await params;
+  const { tab } = await searchParams;
+  const video = await getVideo(id);
   if (!video) notFound();
-  return <VideoEditor initial={video} initialTab={searchParams.tab} />;
+  return <VideoEditor initial={video} initialTab={tab} />;
 }

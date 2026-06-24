@@ -72,7 +72,7 @@ export function HeroStat({
       ? "text-rose-400"
       : "text-zinc-500";
   return (
-    <Card className="flex flex-col gap-1 p-5">
+    <Card className="hover-lift flex flex-col gap-1 p-5">
       <span className="text-[11px] font-medium uppercase tracking-wider text-zinc-500">
         {label}
       </span>
@@ -161,17 +161,24 @@ export function InstagramSection({
     [allPostsSorted]
   );
 
-  const avgSkip = useMemo(() => {
-    const withRate = analyzed.filter((v) => v.results?.skipRate != null);
-    if (!withRate.length) return null;
-    return withRate.reduce((s, v) => s + (v.results.skipRate ?? 0), 0) / withRate.length;
-  }, [analyzed]);
+  // Average watch time (seconds) pulled straight from the Graph API per reel —
+  // no manual entry. Averaged across every synced reel that reports it.
+  const avgWatch = useMemo(() => {
+    const withTime = igCache.posts.filter((p) => (p.avgWatchTime ?? 0) > 0);
+    if (!withTime.length) return null;
+    return withTime.reduce((s, p) => s + (p.avgWatchTime ?? 0), 0) / withTime.length;
+  }, [igCache.posts]);
 
+  // Win rate pulled straight from synced reels — a "win" = crossed the 1K-views
+  // WIN benchmark ("algorithm picked it up"). No manual verdict entry needed.
   const winRate = useMemo(() => {
-    if (!analyzed.length) return null;
-    const wins = analyzed.filter((v) => v.results?.verdict === "WIN").length;
-    return (wins / analyzed.length) * 100;
-  }, [analyzed]);
+    const reels = igCache.posts.filter(
+      (p) => (p.mediaType === "REEL" || p.mediaType === "VIDEO") && postViews(p) > 0
+    );
+    if (!reels.length) return null;
+    const wins = reels.filter((p) => postViews(p) >= 1000).length;
+    return { wins, total: reels.length, pct: (wins / reels.length) * 100 };
+  }, [igCache.posts]);
 
   const donutData = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -210,26 +217,26 @@ export function InstagramSection({
           sub={`${fmt(igCache.posts.length)} posts · from API`}
         />
         <HeroStat
-          label="Avg Skip Rate"
-          value={avgSkip != null ? `${avgSkip.toFixed(1)}%` : "—"}
+          label="Avg Watch Time"
+          value={avgWatch != null ? `${avgWatch.toFixed(1)}s` : "—"}
           sub={
-            avgSkip != null
-              ? avgSkip <= 55
-                ? "▲ Below 55% benchmark"
-                : "▼ Above 55% benchmark"
-              : "Log results to track"
+            avgWatch != null
+              ? avgWatch >= 7
+                ? "▲ Strong retention"
+                : "▼ Below 7s benchmark"
+              : "Sync to pull from API"
           }
-          accent={avgSkip == null ? undefined : avgSkip <= 55 ? "#34d399" : "#f87171"}
+          accent={avgWatch == null ? undefined : avgWatch >= 7 ? "#34d399" : "#f87171"}
         />
         <HeroStat
           label="Win Rate"
-          value={winRate != null ? `${Math.round(winRate)}%` : "—"}
+          value={winRate != null ? `${Math.round(winRate.pct)}%` : "—"}
           sub={
-            analyzed.length
-              ? `${analyzed.filter((v) => v.results?.verdict === "WIN").length} / ${analyzed.length} analyzed`
-              : "No analyzed reels yet"
+            winRate != null
+              ? `${winRate.wins} / ${winRate.total} reels ≥ 1K views`
+              : "Sync to pull from API"
           }
-          accent={winRate == null ? undefined : winRate >= 50 ? "#34d399" : "#fbbf24"}
+          accent={winRate == null ? undefined : winRate.pct >= 50 ? "#34d399" : "#fbbf24"}
         />
         <HeroStat
           label="Followers"
@@ -369,10 +376,10 @@ export function InstagramSection({
       {(bestPost || worstAnalyzed) && (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           {bestPost && (
-            <a href={bestPost.permalink} target="_blank" rel="noopener noreferrer">
-              <Card className="flex flex-col gap-2 p-4 transition-colors hover:border-emerald-500/30 hover:bg-emerald-500/5">
+            <a href={bestPost.permalink} target="_blank" rel="noopener noreferrer" className="group block">
+              <Card className="hover-lift flex flex-col gap-2 p-4 hover:border-emerald-500/30 hover:bg-emerald-500/5">
                 <div className="flex items-center gap-2">
-                  <Trophy className="h-4 w-4 text-emerald-400" strokeWidth={1.75} />
+                  <Trophy className="icon-pop h-4 w-4 text-emerald-400" strokeWidth={1.75} />
                   <span className="text-xs font-semibold uppercase tracking-wider text-emerald-400">
                     Best reel
                   </span>
@@ -399,10 +406,10 @@ export function InstagramSection({
           )}
 
           {worstAnalyzed ? (
-            <a href={`/video/${worstAnalyzed.id}`}>
-              <Card className="flex flex-col gap-2 p-4 transition-colors hover:border-rose-500/30 hover:bg-rose-500/5">
+            <a href={`/video/${worstAnalyzed.id}`} className="group block">
+              <Card className="hover-lift flex flex-col gap-2 p-4 hover:border-rose-500/30 hover:bg-rose-500/5">
                 <div className="flex items-center gap-2">
-                  <Target className="h-4 w-4 text-rose-400" strokeWidth={1.75} />
+                  <Target className="icon-pop h-4 w-4 text-rose-400" strokeWidth={1.75} />
                   <span className="text-xs font-semibold uppercase tracking-wider text-rose-400">
                     Biggest miss
                   </span>

@@ -108,6 +108,81 @@ body::before {
     text-transform: uppercase;
     color: var(--blue);
   }
+
+  /* ---- Shared micro-interaction utilities ----------------------------- */
+
+  /* Lift a card/panel on hover (transform + glow only, never transition-all) */
+  .hover-lift {
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+      border-color 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    will-change: transform;
+  }
+  .hover-lift:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 0 0 1px rgba(59, 130, 246, 0.25),
+      0 18px 50px rgba(0, 0, 0, 0.5), 0 0 60px rgba(59, 130, 246, 0.12);
+  }
+
+  /* Press feedback for any clickable element */
+  .press {
+    transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1),
+      box-shadow 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+      background-color 0.3s cubic-bezier(0.16, 1, 0.3, 1),
+      color 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .press:active {
+    transform: scale(0.96);
+  }
+
+  /* Icon nudge — pair on a group-hover parent: <span class="group"><Icon class="icon-nudge"/> */
+  .icon-nudge {
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .group:hover .icon-nudge {
+    transform: translateX(2px);
+  }
+  .group:hover .icon-pop {
+    transform: scale(1.12) rotate(-4deg);
+  }
+  .icon-pop {
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  /* Animated underline for links */
+  .link-underline {
+    background-image: linear-gradient(var(--blue), var(--blue));
+    background-size: 0% 1.5px;
+    background-position: 0 100%;
+    background-repeat: no-repeat;
+    transition: background-size 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .link-underline:hover {
+    background-size: 100% 1.5px;
+  }
+
+  /* Shimmering skeleton/placeholder fill */
+  .shimmer-bg {
+    background: linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.04) 25%,
+      rgba(59, 130, 246, 0.12) 50%,
+      rgba(255, 255, 255, 0.04) 75%
+    );
+    background-size: 200% 100%;
+  }
+}
+
+/* Respect users who prefer reduced motion — kill all animation/transition. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 /* print styling for PDF / browser print fallback */

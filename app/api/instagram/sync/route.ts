@@ -19,3 +19,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: msg }, { status: 500 });
   }
 }
+
+// Manual trigger from the in-app "Refresh" buttons — runs the same Graph sync
+// and returns the full cache so the UI can re-read live metrics immediately.
+export async function POST() {
+  try {
+    const cache = await syncInstagram();
+    return NextResponse.json(cache);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    return NextResponse.json({ error: msg }, { status: 500 });
+  }
+}

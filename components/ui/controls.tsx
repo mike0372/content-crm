@@ -96,7 +96,7 @@ export const Button = React.forwardRef<
   <button
     ref={ref}
     className={cn(
-      "inline-flex select-none items-center justify-center whitespace-nowrap rounded-[9px] font-semibold outline-none transition-[transform,background-color,border-color,color,box-shadow] duration-150 focus-visible:ring-2 focus-visible:ring-[#3b82f6]/40 disabled:pointer-events-none disabled:opacity-50",
+      "inline-flex select-none items-center justify-center whitespace-nowrap rounded-[9px] font-semibold outline-none transition-[transform,background-color,border-color,color,box-shadow] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] will-change-transform hover:-translate-y-px active:translate-y-0 focus-visible:ring-2 focus-visible:ring-[#3b82f6]/40 disabled:pointer-events-none disabled:opacity-50",
       variants[variant],
       sizes[size],
       className
@@ -115,7 +115,7 @@ export function Chip({
   return (
     <button
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-colors duration-150 outline-none focus-visible:ring-2 focus-visible:ring-accent/40",
+        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium outline-none transition-[transform,background-color,color,box-shadow] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-px active:scale-95 focus-visible:ring-2 focus-visible:ring-accent/40",
         active
           ? "bg-accent/20 text-accent-foreground ring-1 ring-inset ring-accent/40"
           : "bg-white/[0.04] text-zinc-400 hover:bg-white/[0.08] hover:text-zinc-200",

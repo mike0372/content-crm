@@ -18,7 +18,7 @@ export function PageHeader({
         className
       )}
     >
-      <div>
+      <div className="animate-fade-in-down">
         <h1 className="text-[22px] font-bold tracking-[-0.025em] text-white">
           {title}
         </h1>
@@ -26,7 +26,11 @@ export function PageHeader({
           <p className="mt-0.5 text-[13px] leading-relaxed text-zinc-500">{subtitle}</p>
         )}
       </div>
-      {children && <div className="flex items-center gap-2.5">{children}</div>}
+      {children && (
+        <div className="flex animate-fade-in-down items-center gap-2.5 [animation-delay:80ms]">
+          {children}
+        </div>
+      )}
     </header>
   );
 }

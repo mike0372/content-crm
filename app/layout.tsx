@@ -3,7 +3,7 @@ import localFont from "next/font/local";
 import { Instrument_Serif } from "next/font/google";
 import "./globals.css";
 import { SidebarLayout } from "@/components/SidebarLayout";
-import { BackgroundGradientAnimation } from "@/components/ui/background-gradient-animation";
+import { StaticBackground } from "@/components/ui/StaticBackground";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -36,10 +36,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${instrumentSerif.variable} font-sans bg-base text-zinc-200 antialiased`}
       >
-        <BackgroundGradientAnimation
-          containerClassName="-z-10 pointer-events-none"
-          interactive={false}
-        />
+        <StaticBackground />
         <div className="relative z-0 min-h-screen">
           <SidebarLayout>{children}</SidebarLayout>
         </div>

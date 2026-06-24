@@ -50,7 +50,7 @@ const TYPE_COLOR: Record<InstagramPost["mediaType"], string> = {
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <Card className="flex flex-col gap-1 p-5">
+    <Card className="hover-lift flex flex-col gap-1 p-5">
       <span className="text-xs font-medium uppercase tracking-wider text-zinc-500">{label}</span>
       <span className="text-2xl font-bold text-zinc-100">{value}</span>
       {sub && <span className="text-xs text-zinc-500">{sub}</span>}
@@ -134,7 +134,7 @@ export function PerformanceClient({ initialData }: { initialData: InstagramCache
       ) : (
         <div className="space-y-6 px-7 py-7">
           {/* Stats row */}
-          <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <div className="grid animate-fade-in-up grid-cols-2 gap-4 md:grid-cols-4">
             <StatCard label="Followers" value={fmt(data.followersCount)} sub={`${data.mediaCount} posts total`} />
             <StatCard label="Avg reach" value={fmt(avgReach)} sub="last 25 posts" />
             <StatCard label="Avg eng. rate" value={`${avgEng.toFixed(2)}%`} sub="likes+comments+saves+shares" />
@@ -143,7 +143,7 @@ export function PerformanceClient({ initialData }: { initialData: InstagramCache
 
           {/* Chart */}
           {chartData.length > 0 && (
-            <Card elevated className="p-6">
+            <Card elevated className="animate-fade-in-up p-6 [animation-delay:80ms]">
               <h2 className="mb-4 text-sm font-semibold text-zinc-200">Views / plays · last 25 posts</h2>
               <div className="h-52 w-full">
                 <ResponsiveContainer width="100%" height="100%">
@@ -194,7 +194,7 @@ export function PerformanceClient({ initialData }: { initialData: InstagramCache
           )}
 
           {/* Posts table */}
-          <Card className="overflow-hidden">
+          <Card className="animate-fade-in-up overflow-hidden [animation-delay:160ms]">
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
@@ -225,8 +225,12 @@ export function PerformanceClient({ initialData }: { initialData: InstagramCache
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/[0.04]">
-                  {sorted.map((p) => (
-                    <tr key={p.id} className="transition-colors hover:bg-white/[0.02]">
+                  {sorted.map((p, i) => (
+                    <tr
+                      key={p.id}
+                      className="animate-fade-in transition-colors hover:bg-white/[0.02]"
+                      style={{ animationDelay: `${Math.min(i, 18) * 25}ms` }}
+                    >
                       <td className="max-w-[220px] px-4 py-3">
                         <p className="truncate font-medium text-zinc-200">
                           {p.caption ? p.caption.slice(0, 60) + (p.caption.length > 60 ? "…" : "") : "—"}

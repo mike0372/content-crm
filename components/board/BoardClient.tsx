@@ -19,7 +19,15 @@ import { Video, Status, STATUSES, STATUS_LABELS, STATUS_COLORS } from "@/lib/typ
 import { VideoCard } from "@/components/VideoCard";
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/controls";
-import { apiSaveVideo, apiCreateVideo, apiDeleteVideo } from "@/lib/api";
+import { LiveIndicator, ConnectionBar } from "@/components/ui/LiveIndicator";
+import { Toast, useToast } from "@/components/ui/Toast";
+import { useLiveSync } from "@/lib/useLiveSync";
+import {
+  apiSaveVideo,
+  apiCreateVideo,
+  apiDeleteVideo,
+  apiGetVideos,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 function DraggableCard({ video, onDelete }: { video: Video; onDelete: (id: string) => void }) {
@@ -36,42 +44,82 @@ function DraggableCard({ video, onDelete }: { video: Video; onDelete: (id: strin
   );
 }
 
+const PAGE_SIZE = 10;
+
 function Column({
   status,
   videos,
   onDelete,
+  index = 0,
 }: {
   status: Status;
   videos: Video[];
   onDelete: (id: string) => void;
+  index?: number;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
   const c = STATUS_COLORS[status];
+  // Per-column, independent reveal state. Resets on refresh (no persistence).
+  const [visible, setVisible] = useState(PAGE_SIZE);
+
+  const shown = videos.slice(0, visible);
+  const remaining = videos.length - shown.length;
+  const expanded = visible > PAGE_SIZE && videos.length > PAGE_SIZE;
+
   return (
-    <div id={`col-${status}`} className="flex w-[300px] shrink-0 flex-col">
-      <div className="mb-3 flex items-center gap-2 px-1">
-        <span className={cn("h-1.5 w-1.5 rounded-full", c.dot)} />
-        <h2 className="font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-400">
+    <div
+      id={`col-${status}`}
+      className="flex min-w-0 animate-fade-in-up flex-col"
+      style={{ animationDelay: `${index * 70}ms` }}
+    >
+      <div className="mb-2.5 flex items-center gap-2 px-0.5">
+        <span className={cn("h-2 w-2 rounded-full", c.dot)} />
+        <h2 className="text-[15px] font-bold tracking-tight text-zinc-100">
           {STATUS_LABELS[status]}
         </h2>
-        <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-[11px] font-medium tabular-nums text-zinc-500">
+        <span className="rounded-full bg-white/[0.06] px-2 py-0.5 text-xs font-semibold tabular-nums text-zinc-400">
           {videos.length}
         </span>
       </div>
       <div
         ref={setNodeRef}
         className={cn(
-          "flex min-h-[140px] flex-1 flex-col gap-3 rounded-2xl border border-dashed border-white/[0.05] bg-surface/40 p-3 transition-colors duration-150",
+          "flex min-h-[120px] flex-col gap-2 rounded-xl border border-dashed border-white/[0.05] bg-surface/40 p-2 transition-colors duration-150",
           isOver && "border-accent/40 bg-accent/[0.06]"
         )}
       >
-        {videos.map((v) => (
-          <DraggableCard key={v.id} video={v} onDelete={onDelete} />
+        {shown.map((v, i) => (
+          <div
+            key={v.id}
+            className="animate-fade-in"
+            style={{ animationDelay: `${index * 70 + i * 35}ms` }}
+          >
+            <DraggableCard video={v} onDelete={onDelete} />
+          </div>
         ))}
+
         {videos.length === 0 && (
-          <div className="grid flex-1 place-items-center rounded-lg text-xs text-zinc-600">
+          <div className="grid place-items-center py-3 text-[11px] text-zinc-600">
             Drop here
           </div>
+        )}
+
+        {remaining > 0 && (
+          <button
+            onClick={() => setVisible((v) => v + PAGE_SIZE)}
+            className="mt-0.5 rounded-lg border border-white/[0.06] bg-white/[0.03] px-3 py-1.5 text-[11px] font-medium text-zinc-400 outline-none transition-colors hover:border-white/[0.12] hover:bg-white/[0.07] hover:text-zinc-200 focus-visible:ring-2 focus-visible:ring-[#3b82f6]/40 active:scale-[0.98]"
+          >
+            View more ({remaining} remaining)
+          </button>
+        )}
+
+        {expanded && (
+          <button
+            onClick={() => setVisible(PAGE_SIZE)}
+            className="self-center rounded-md px-2 py-1 text-[11px] font-medium text-zinc-600 outline-none transition-colors hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-[#3b82f6]/40"
+          >
+            Show less
+          </button>
         )}
       </div>
     </div>
@@ -105,6 +153,14 @@ export function BoardClient({ initialVideos }: { initialVideos: Video[] }) {
   const undoRaf = useRef<number | null>(null);
   const undoStart = useRef<number>(0);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const { message: toast, show: showToast } = useToast();
+
+  // Live sync: poll the server so changes from other tabs/devices appear here.
+  // Excludes any item pending local undo-delete (server still has it briefly).
+  const { status, mute } = useLiveSync<Video[]>(apiGetVideos, (server) => {
+    if (activeId) return; // never reshuffle mid-drag
+    setVideos(server.filter((v) => v.id !== undoItem?.video.id));
+  });
 
   const scrollToColumn = useCallback((status: Status) => {
     const col = document.getElementById(`col-${status}`);
@@ -132,6 +188,7 @@ export function BoardClient({ initialVideos }: { initialVideos: Video[] }) {
   const active = videos.find((v) => v.id === activeId) ?? null;
 
   function onDragStart(e: DragStartEvent) {
+    mute(15000); // hold off live updates while the user is dragging
     setActiveId(String(e.active.id));
   }
 
@@ -154,10 +211,12 @@ export function BoardClient({ initialVideos }: { initialVideos: Video[] }) {
       ],
     };
     setVideos((prev) => prev.map((v) => (v.id === id ? updated : v)));
+    mute();
     try {
       await apiSaveVideo(updated);
     } catch {
       setVideos((prev) => prev.map((v) => (v.id === id ? current : v)));
+      showToast("Sync failed — retrying");
       return;
     }
 
@@ -171,8 +230,13 @@ export function BoardClient({ initialVideos }: { initialVideos: Video[] }) {
   }
 
   async function addVideo() {
-    const v = await apiCreateVideo({ title: "Untitled Reel" });
-    setVideos((prev) => [...prev, v]);
+    mute();
+    try {
+      const v = await apiCreateVideo({ title: "Untitled Reel" });
+      setVideos((prev) => [...prev, v]);
+    } catch {
+      showToast("Sync failed — retrying");
+    }
   }
 
   function clearUndo() {
@@ -185,6 +249,7 @@ export function BoardClient({ initialVideos }: { initialVideos: Video[] }) {
   function deleteVideo(id: string) {
     const target = videos.find((v) => v.id === id);
     if (!target) return;
+    mute(UNDO_MS + 4000); // keep the row hidden through the undo window + save
 
     // If there's already a pending undo, commit it now before starting a new one
     if (undoItem) {
@@ -229,10 +294,12 @@ export function BoardClient({ initialVideos }: { initialVideos: Video[] }) {
 
   return (
     <>
+      <ConnectionBar status={status} />
       <PageHeader
         title="Board"
         subtitle="Drag reels through the production pipeline"
       >
+        <LiveIndicator status={status} />
         <Button variant="primary" onClick={addVideo}>
           <Plus className="h-4 w-4" strokeWidth={1.75} /> New Reel
         </Button>
@@ -240,13 +307,14 @@ export function BoardClient({ initialVideos }: { initialVideos: Video[] }) {
 
       {/* Stage quick-nav */}
       <div className="flex items-center gap-1.5 px-7 pb-1 pt-0">
-        {STATUSES.map((s) => {
+        {STATUSES.map((s, i) => {
           const c = STATUS_COLORS[s];
           return (
             <button
               key={s}
               onClick={() => scrollToColumn(s)}
-              className="flex items-center gap-1.5 rounded-full border border-white/[0.06] bg-white/[0.03] px-3 py-1 text-[11px] font-medium text-zinc-500 outline-none transition-colors hover:border-white/[0.12] hover:bg-white/[0.07] hover:text-zinc-200 focus-visible:ring-2 focus-visible:ring-[#3b82f6]/40 active:scale-95"
+              style={{ animationDelay: `${i * 45}ms` }}
+              className="flex animate-fade-in-down items-center gap-1.5 rounded-full border border-white/[0.06] bg-white/[0.03] px-3 py-1 text-[11px] font-medium text-zinc-500 outline-none transition-[colors,transform] duration-200 hover:-translate-y-px hover:border-white/[0.12] hover:bg-white/[0.07] hover:text-zinc-200 focus-visible:ring-2 focus-visible:ring-[#3b82f6]/40 active:scale-95"
             >
               <span className={cn("h-1.5 w-1.5 shrink-0 rounded-full", c.dot)} />
               {STATUS_LABELS[s]}
@@ -262,14 +330,14 @@ export function BoardClient({ initialVideos }: { initialVideos: Video[] }) {
         onDragStart={onDragStart}
         onDragEnd={onDragEnd}
       >
-        <div ref={scrollRef} className="flex gap-5 overflow-x-auto px-7 py-6">
-          {STATUSES.map((s) => (
-            <Column key={s} status={s} videos={byStatus[s]} onDelete={deleteVideo} />
+        <div ref={scrollRef} className="grid grid-cols-5 items-start gap-4 px-7 py-5">
+          {STATUSES.map((s, i) => (
+            <Column key={s} status={s} videos={byStatus[s]} onDelete={deleteVideo} index={i} />
           ))}
         </div>
         <DragOverlay dropAnimation={null}>
           {active ? (
-            <div className="w-[276px]">
+            <div className="w-[240px]">
               <VideoCard video={active} dragging />
             </div>
           ) : null}
@@ -307,6 +375,8 @@ export function BoardClient({ initialVideos }: { initialVideos: Video[] }) {
           </button>
         </div>
       </div>
+
+      <Toast message={toast} />
     </>
   );
 }

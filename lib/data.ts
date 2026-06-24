@@ -1,14 +1,9 @@
 import "server-only";
-import { promises as fs } from "fs";
-import path from "path";
 import {
   ContentItem,
   CalendarWeek,
   PerformanceRow,
   DAY_KEYS,
-  Status,
-  Pillar,
-  Format,
 } from "./types";
 import {
   createVideo,
@@ -18,324 +13,148 @@ import {
   defaultChecklist,
 } from "./factories";
 import { isoWeek } from "./week";
+import { getSupabase } from "./supabase";
 
-const DATA_DIR = path.join(process.cwd(), "data");
-const CONTENT_DIR = path.join(DATA_DIR, "content");
-const VIDEOS_DIR = path.join(DATA_DIR, "videos"); // legacy — kept for migration read
-const CALENDARS_DIR = path.join(DATA_DIR, "calendars");
-const LEGACY_CALENDAR_FILE = path.join(DATA_DIR, "calendar.json");
-const PERF_FILE = path.join(DATA_DIR, "performance-log.json");
-const IDEAS_FILE = path.join(DATA_DIR, "ideas.json"); // legacy — kept for migration read
-const BACKUP_DIR = path.join(DATA_DIR, "_backup");
+// ============================================================================
+// Supabase-backed data layer. Replaces the local /data JSON store.
+// Public function signatures are unchanged so API routes and server
+// components keep working without edits.
+// ============================================================================
 
-async function ensureDirs() {
-  await Promise.all([
-    fs.mkdir(CONTENT_DIR, { recursive: true }),
-    fs.mkdir(VIDEOS_DIR, { recursive: true }),
-    fs.mkdir(CALENDARS_DIR, { recursive: true }),
-  ]);
+// ---- Row <-> ContentItem mapping -------------------------------------------
+
+type ContentRow = {
+  id: string;
+  stage: ContentItem["stage"];
+  status: ContentItem["status"];
+  title: string;
+  pillar: ContentItem["pillar"];
+  hook_type: ContentItem["hookType"];
+  format: ContentItem["format"];
+  length_target: string;
+  posting_window: ContentItem["postingWindow"];
+  scheduled_time: string;
+  duration_min: number;
+  source_url: string;
+  demand_signal: ContentItem["demandSignal"];
+  recognition_score: number;
+  hook: ContentItem["hook"];
+  script: ContentItem["script"];
+  captions: ContentItem["captions"];
+  engagement: ContentItem["engagement"];
+  checklist: ContentItem["checklist"];
+  results: ContentItem["results"];
+  series_name: string;
+  part_number: number | null;
+  instagram_media_id: string | null;
+  status_history: ContentItem["statusHistory"];
+  created_at: string;
+  updated_at: string;
+};
+
+function rowToItem(r: ContentRow): ContentItem {
+  return {
+    id: r.id,
+    stage: r.stage,
+    status: r.status,
+    title: r.title,
+    pillar: r.pillar,
+    hookType: r.hook_type,
+    format: r.format,
+    lengthTarget: r.length_target,
+    postingWindow: r.posting_window,
+    scheduledTime: r.scheduled_time ?? "",
+    durationMin: r.duration_min ?? 60,
+    sourceUrl: r.source_url,
+    demandSignal: r.demand_signal,
+    recognitionScore: r.recognition_score,
+    hook: r.hook,
+    script: r.script ?? [],
+    captions: r.captions ?? [],
+    engagement: r.engagement,
+    checklist: r.checklist ?? [],
+    results: r.results,
+    seriesName: r.series_name,
+    partNumber: r.part_number,
+    instagramMediaId: r.instagram_media_id ?? null,
+    statusHistory: r.status_history ?? [],
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
 }
 
-async function readJson<T>(file: string, fallback: T): Promise<T> {
-  try {
-    const raw = await fs.readFile(file, "utf8");
-    return JSON.parse(raw) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-async function writeJson(file: string, data: unknown) {
-  await fs.writeFile(file, JSON.stringify(data, null, 2), "utf8");
-}
-
-// ---- One-time migration from videos/ + ideas.json → content/ ---------------
-
-let migrating: Promise<void> | null = null;
-
-async function migrateIfNeeded(): Promise<void> {
-  if (migrating !== null) return migrating;
-  migrating = _runMigration().finally(() => {
-    migrating = null;
-  });
-  return migrating;
-}
-
-async function _runMigration(): Promise<void> {
-  // Already migrated if content/ has files
-  const contentFiles = await fs.readdir(CONTENT_DIR).catch(() => [] as string[]);
-  if (contentFiles.some((f) => f.endsWith(".json"))) return;
-
-  const videoFiles = (
-    await fs.readdir(VIDEOS_DIR).catch(() => [] as string[])
-  ).filter((f) => f.endsWith(".json"));
-  const ideasRaw = await fs.readFile(IDEAS_FILE, "utf8").catch(() => null);
-
-  const hasOldData = videoFiles.length > 0 || ideasRaw !== null;
-  if (!hasOldData) return; // nothing to migrate — seed will run later
-
-  // --- Backup ---
-  await fs.mkdir(BACKUP_DIR, { recursive: true });
-  if (videoFiles.length > 0) {
-    const backupVid = path.join(BACKUP_DIR, "videos");
-    await fs.mkdir(backupVid, { recursive: true });
-    await Promise.all(
-      videoFiles.map((f) =>
-        fs.copyFile(path.join(VIDEOS_DIR, f), path.join(backupVid, f))
-      )
-    );
-  }
-  if (ideasRaw) {
-    await fs.writeFile(
-      path.join(BACKUP_DIR, "ideas.json"),
-      ideasRaw,
-      "utf8"
-    );
-  }
-
-  // --- Migrate videos → stage:"production" items ---
-  let migratedVideos = 0;
-  for (const f of videoFiles) {
-    try {
-      const raw = await fs.readFile(path.join(VIDEOS_DIR, f), "utf8");
-      const v = JSON.parse(raw) as Record<string, unknown>;
-      const item: ContentItem = {
-        id: String(v.id ?? ""),
-        stage: "production",
-        status: (v.status as Status) ?? "TO_SHOOT",
-        title: String(v.title ?? ""),
-        pillar: (v.pillar as Pillar) ?? "Claude Code",
-        hookType: "",
-        format: (v.format as Format) ?? "Screen recording",
-        lengthTarget: String(v.lengthTarget ?? "30s"),
-        postingWindow:
-          (v.postingWindow as ContentItem["postingWindow"]) ?? "Evening (6-8pm)",
-        sourceUrl: String(v.sourceUrl ?? ""),
-        demandSignal: (v.demandSignal as ContentItem["demandSignal"]) ?? {
-          text: "",
-          source: String(v.sourceUrl ?? ""),
-          date: "",
-        },
-        recognitionScore: Number(v.recognitionScore ?? 3),
-        hook: (v.hook as ContentItem["hook"]) ?? {
-          line1: "",
-          line2: "",
-          firstTwoSeconds: "",
-          scorecard: {
-            recognition: false,
-            openLoop: false,
-            firstTwoS: false,
-            specificity: false,
-            identity: false,
-          },
-        },
-        script: (v.script as ContentItem["script"]) ?? defaultScript(),
-        captions: (v.captions as ContentItem["captions"]) ?? defaultCaptions(),
-        engagement: (v.engagement as ContentItem["engagement"]) ?? {
-          triggerType: "",
-          triggerText: "",
-          firstComment: "",
-          endCard: "",
-        },
-        checklist:
-          (v.checklist as ContentItem["checklist"]) ?? defaultChecklist(),
-        results: (v.results as ContentItem["results"]) ?? {
-          viewsIG: null,
-          viewsFB: null,
-          skipRate: null,
-          topSource: "",
-          likes: null,
-          comments: null,
-          saves: null,
-          follows: null,
-          verdict: "",
-          lesson: "",
-        },
-        seriesName: String(v.seriesName ?? ""),
-        partNumber: v.partNumber != null ? Number(v.partNumber) : null,
-        statusHistory: (v.statusHistory as ContentItem["statusHistory"]) ?? [
-          {
-            status: (v.status as Status) ?? "TO_SHOOT",
-            timestamp: String(v.createdAt ?? new Date().toISOString()),
-          },
-        ],
-        createdAt: String(v.createdAt ?? new Date().toISOString()),
-        updatedAt: String(v.updatedAt ?? new Date().toISOString()),
-      };
-      if (!item.id) continue;
-      await writeJson(path.join(CONTENT_DIR, `${item.id}.json`), item);
-      migratedVideos++;
-    } catch {
-      /* skip corrupt files */
-    }
-  }
-
-  // --- Migrate ideas.json → stage:"idea" items ---
-  let migratedIdeas = 0;
-  if (ideasRaw) {
-    try {
-      const ideas = JSON.parse(ideasRaw) as Array<Record<string, unknown>>;
-      if (Array.isArray(ideas)) {
-        for (const idea of ideas) {
-          const ts = String(idea.createdAt ?? new Date().toISOString());
-          const item: ContentItem = {
-            id: String(idea.id ?? ""),
-            stage: "idea",
-            status: "TO_SHOOT",
-            title: String(idea.title ?? ""),
-            pillar: (idea.pillar as Pillar) ?? "Claude Code",
-            hookType: "",
-            format: "Talking head",
-            lengthTarget: "",
-            postingWindow: "",
-            sourceUrl: String(idea.sourceUrl ?? ""),
-            demandSignal: {
-              text: "",
-              source: String(idea.sourceUrl ?? ""),
-              date: "",
-            },
-            recognitionScore: Number(idea.recognitionScore ?? 3),
-            hook: {
-              line1: String(idea.hookDraft ?? ""),
-              line2: "",
-              firstTwoSeconds: "",
-              scorecard: {
-                recognition: false,
-                openLoop: false,
-                firstTwoS: false,
-                specificity: false,
-                identity: false,
-              },
-            },
-            script: [],
-            captions: [],
-            engagement: {
-              triggerType: "",
-              triggerText: "",
-              firstComment: "",
-              endCard: "",
-            },
-            checklist: [],
-            results: {
-              viewsIG: null,
-              viewsFB: null,
-              skipRate: null,
-              topSource: "",
-              likes: null,
-              comments: null,
-              saves: null,
-              follows: null,
-              verdict: "",
-              lesson: "",
-            },
-            seriesName: "",
-            partNumber: null,
-            statusHistory: [{ status: "TO_SHOOT", timestamp: ts }],
-            createdAt: ts,
-            updatedAt: ts,
-          };
-          if (!item.id) continue;
-          await writeJson(path.join(CONTENT_DIR, `${item.id}.json`), item);
-          migratedIdeas++;
-        }
-      }
-    } catch {
-      /* skip corrupt */
-    }
-  }
-
-  console.log(
-    `[data] Migration complete: ${migratedVideos} videos + ${migratedIdeas} ideas → data/content/`
-  );
-}
-
-// ---- Seed -------------------------------------------------------------------
-
-let seeding: Promise<void> | null = null;
-
-async function seedIfEmpty(): Promise<void> {
-  if (seeding) return seeding;
-  seeding = (async () => {
-    const files = await fs.readdir(CONTENT_DIR);
-    if (files.some((f) => f.endsWith(".json"))) return;
-
-    const { seedVideos, seedIdeas } = await import("./seed");
-    const videos = seedVideos();
-    for (const v of videos) {
-      await writeJson(path.join(CONTENT_DIR, `${v.id}.json`), v);
-    }
-    const cal = emptyWeek();
-    DAY_KEYS.forEach((k, i) => {
-      cal.days[k] = videos[i] ? [videos[i].id] : [];
-    });
-    await writeJson(path.join(CALENDARS_DIR, `${cal.week}.json`), cal);
-
-    const ideas = seedIdeas();
-    for (const idea of ideas) {
-      await writeJson(path.join(CONTENT_DIR, `${idea.id}.json`), idea);
-    }
-    await writeJson(PERF_FILE, []);
-  })();
-  try {
-    await seeding;
-  } finally {
-    seeding = null;
-  }
-}
-
-async function bootstrap() {
-  await ensureDirs();
-  await migrateIfNeeded();
-  await seedIfEmpty();
+function itemToRow(i: ContentItem): ContentRow {
+  return {
+    id: i.id,
+    stage: i.stage,
+    status: i.status,
+    title: i.title,
+    pillar: i.pillar,
+    hook_type: i.hookType,
+    format: i.format,
+    length_target: i.lengthTarget,
+    posting_window: i.postingWindow,
+    scheduled_time: i.scheduledTime ?? "",
+    duration_min: i.durationMin ?? 60,
+    source_url: i.sourceUrl,
+    demand_signal: i.demandSignal,
+    recognition_score: i.recognitionScore,
+    hook: i.hook,
+    script: i.script,
+    captions: i.captions,
+    engagement: i.engagement,
+    checklist: i.checklist,
+    results: i.results,
+    series_name: i.seriesName,
+    part_number: i.partNumber,
+    instagram_media_id: i.instagramMediaId ?? null,
+    status_history: i.statusHistory,
+    created_at: i.createdAt,
+    updated_at: i.updatedAt,
+  };
 }
 
 // ---- Unified Content Store --------------------------------------------------
 
 export async function getAllContent(): Promise<ContentItem[]> {
-  await bootstrap();
-  const files = await fs.readdir(CONTENT_DIR);
-  const items: ContentItem[] = [];
-  for (const f of files) {
-    if (!f.endsWith(".json")) continue;
-    try {
-      const raw = await fs.readFile(path.join(CONTENT_DIR, f), "utf8");
-      items.push(JSON.parse(raw) as ContentItem);
-    } catch {
-      /* skip corrupt */
-    }
-  }
-  return items;
+  const { data, error } = await getSupabase()
+    .from("content_items")
+    .select("*")
+    .order("created_at", { ascending: true });
+  if (error) throw new Error(`getAllContent: ${error.message}`);
+  return (data as ContentRow[]).map(rowToItem);
 }
 
 export async function getContentItem(id: string): Promise<ContentItem | null> {
-  await ensureDirs();
-  try {
-    const raw = await fs.readFile(
-      path.join(CONTENT_DIR, `${id}.json`),
-      "utf8"
-    );
-    return JSON.parse(raw) as ContentItem;
-  } catch {
-    return null;
-  }
+  const { data, error } = await getSupabase()
+    .from("content_items")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+  if (error) throw new Error(`getContentItem: ${error.message}`);
+  return data ? rowToItem(data as ContentRow) : null;
 }
 
 export async function saveContentItem(item: ContentItem): Promise<ContentItem> {
-  await ensureDirs();
   item.updatedAt = new Date().toISOString();
-  await writeJson(path.join(CONTENT_DIR, `${item.id}.json`), item);
-  if (item.stage === "production") {
-    await syncPerformanceRow(item);
+  const { data, error } = await getSupabase()
+    .from("content_items")
+    .upsert(itemToRow(item), { onConflict: "id" })
+    .select("*")
+    .single();
+  if (error) throw new Error(`saveContentItem: ${error.message}`);
+  const saved = rowToItem(data as ContentRow);
+  if (saved.stage === "production") {
+    await syncPerformanceRow(saved);
   }
-  return item;
+  return saved;
 }
 
 export async function deleteContentItem(id: string): Promise<void> {
-  try {
-    await fs.unlink(path.join(CONTENT_DIR, `${id}.json`));
-  } catch {
-    /* ignore */
-  }
+  const sb = getSupabase();
+  await sb.from("performance_log").delete().eq("video_id", id);
+  const { error } = await sb.from("content_items").delete().eq("id", id);
+  if (error) throw new Error(`deleteContentItem: ${error.message}`);
 }
 
 // ---- Videos (backward-compat wrappers) -------------------------------------
@@ -372,125 +191,177 @@ export async function saveIdeaItem(item: ContentItem): Promise<ContentItem> {
   return saveContentItem(item);
 }
 
-// Bulk-save: saves all incoming ideas and deletes idea files not in the list.
+// Bulk-save: saves all incoming ideas and deletes idea rows not in the list.
 export async function saveIdeas(ideas: ContentItem[]): Promise<ContentItem[]> {
-  await ensureDirs();
-  await migrateIfNeeded();
-  const allFiles = await fs.readdir(CONTENT_DIR).catch(() => [] as string[]);
-  const currentIdeaIds = new Set(
-    allFiles
-      .filter((f) => f.startsWith("idea_") && f.endsWith(".json"))
-      .map((f) => f.slice(0, -5))
-  );
+  const sb = getSupabase();
   const incomingIds = new Set(ideas.map((i) => i.id));
+
+  const { data: existing, error } = await sb
+    .from("content_items")
+    .select("id")
+    .eq("stage", "idea");
+  if (error) throw new Error(`saveIdeas: ${error.message}`);
 
   for (const idea of ideas) {
     await saveContentItem(idea);
   }
-  for (const id of currentIdeaIds) {
-    if (!incomingIds.has(id)) {
-      await deleteContentItem(id);
-    }
+
+  const toDelete = (existing as { id: string }[])
+    .map((r) => r.id)
+    .filter((id) => !incomingIds.has(id));
+  if (toDelete.length > 0) {
+    await sb.from("content_items").delete().in("id", toDelete);
   }
   return ideas;
 }
 
 // ---- Calendar ---------------------------------------------------------------
 
-function migrateDays(raw: Record<string, unknown>): CalendarWeek["days"] {
-  const days: CalendarWeek["days"] = {
-    mon: [],
-    tue: [],
-    wed: [],
-    thu: [],
-    fri: [],
-    sat: [],
-    sun: [],
-  };
+function emptyDays(): CalendarWeek["days"] {
+  return { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] };
+}
+
+function normalizeDays(raw: unknown): CalendarWeek["days"] {
+  const days = emptyDays();
+  const obj = (raw ?? {}) as Record<string, unknown>;
   for (const k of DAY_KEYS) {
-    const v = raw[k];
+    const v = obj[k];
     if (Array.isArray(v)) days[k] = v.filter(Boolean) as string[];
     else if (typeof v === "string") days[k] = [v];
-    else days[k] = [];
   }
   return days;
 }
 
+function emptyWeek(week = isoWeek()): CalendarWeek {
+  return { week, days: emptyDays() };
+}
+
 export async function getCalendar(week?: string): Promise<CalendarWeek> {
-  await ensureDirs();
   const wk = week ?? isoWeek();
-  const weekFile = path.join(CALENDARS_DIR, `${wk}.json`);
-  try {
-    const raw = await fs.readFile(weekFile, "utf8");
-    const parsed = JSON.parse(raw) as Record<string, unknown>;
-    return {
-      ...(parsed as unknown as CalendarWeek),
-      days: migrateDays(parsed.days as Record<string, unknown>),
-    };
-  } catch {
-    if (!week || week === isoWeek()) {
-      try {
-        const raw = await fs.readFile(LEGACY_CALENDAR_FILE, "utf8");
-        const parsed = JSON.parse(raw) as Record<string, unknown>;
-        const migrated: CalendarWeek = {
-          ...(parsed as unknown as CalendarWeek),
-          week: wk,
-          days: migrateDays(parsed.days as Record<string, unknown>),
-        };
-        await writeJson(weekFile, migrated);
-        return migrated;
-      } catch {
-        /* fall through */
-      }
-    }
-    return emptyWeek(wk);
-  }
+  const { data, error } = await getSupabase()
+    .from("calendars")
+    .select("*")
+    .eq("week", wk)
+    .maybeSingle();
+  if (error) throw new Error(`getCalendar: ${error.message}`);
+  if (!data) return emptyWeek(wk);
+  return {
+    week: data.week,
+    days: normalizeDays(data.days),
+    notes: data.notes ?? undefined,
+    theme: data.theme ?? undefined,
+  };
 }
 
 export async function saveCalendar(cal: CalendarWeek): Promise<CalendarWeek> {
-  await ensureDirs();
-  const weekFile = path.join(CALENDARS_DIR, `${cal.week}.json`);
-  await writeJson(weekFile, cal);
+  const { error } = await getSupabase().from("calendars").upsert(
+    {
+      week: cal.week,
+      days: cal.days,
+      notes: cal.notes ?? null,
+      theme: cal.theme ?? null,
+    },
+    { onConflict: "week" }
+  );
+  if (error) throw new Error(`saveCalendar: ${error.message}`);
   return cal;
-}
-
-function emptyWeek(week = isoWeek()): CalendarWeek {
-  return {
-    week,
-    days: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] },
-  };
 }
 
 // ---- Performance log --------------------------------------------------------
 
+type PerfRow = {
+  video_id: string;
+  date: string;
+  hook: string;
+  pillar: string;
+  format: string;
+  views: number;
+  skip_rate: number;
+  top_source: string;
+  verdict: string;
+  lesson: string;
+};
+
 export async function getPerformanceLog(): Promise<PerformanceRow[]> {
-  await ensureDirs();
-  return readJson<PerformanceRow[]>(PERF_FILE, []);
+  const { data, error } = await getSupabase()
+    .from("performance_log")
+    .select("*")
+    .order("date", { ascending: true });
+  if (error) throw new Error(`getPerformanceLog: ${error.message}`);
+  return (data as PerfRow[]).map((r) => ({
+    videoId: r.video_id,
+    date: r.date,
+    hook: r.hook,
+    pillar: r.pillar as PerformanceRow["pillar"],
+    format: r.format as PerformanceRow["format"],
+    views: r.views,
+    skipRate: r.skip_rate,
+    topSource: r.top_source,
+    verdict: r.verdict as PerformanceRow["verdict"],
+    lesson: r.lesson,
+  }));
 }
 
 async function syncPerformanceRow(item: ContentItem) {
-  const log = await readJson<PerformanceRow[]>(PERF_FILE, []);
-  const idx = log.findIndex((r) => r.videoId === item.id);
+  const sb = getSupabase();
   if (item.status === "ANALYZED") {
-    const row: PerformanceRow = {
-      videoId: item.id,
+    const row: PerfRow = {
+      video_id: item.id,
       date: item.updatedAt.slice(0, 10),
       hook: item.hook.line1 || item.title,
       pillar: item.pillar,
       format: item.format,
       views: (item.results.viewsIG ?? 0) + (item.results.viewsFB ?? 0),
-      skipRate: item.results.skipRate ?? 0,
-      topSource: item.results.topSource,
+      skip_rate: item.results.skipRate ?? 0,
+      top_source: item.results.topSource,
       verdict: item.results.verdict,
       lesson: item.results.lesson,
     };
-    if (idx >= 0) log[idx] = row;
-    else log.push(row);
-  } else if (idx >= 0) {
-    log.splice(idx, 1);
+    await sb.from("performance_log").upsert(row, { onConflict: "video_id" });
+  } else {
+    await sb.from("performance_log").delete().eq("video_id", item.id);
   }
-  await writeJson(PERF_FILE, log);
+}
+
+// Reconciles the entire performance_log from current content_items state.
+// Upserts a row for every ANALYZED production item and removes any stale rows.
+// Safe to run repeatedly — derives only from the DB, never local files.
+export async function rebuildPerformanceLog(): Promise<number> {
+  const sb = getSupabase();
+  const all = await getAllContent();
+  const analyzed = all.filter(
+    (i) => i.stage === "production" && i.status === "ANALYZED"
+  );
+
+  if (analyzed.length > 0) {
+    const rows: PerfRow[] = analyzed.map((item) => ({
+      video_id: item.id,
+      date: item.updatedAt.slice(0, 10),
+      hook: item.hook.line1 || item.title,
+      pillar: item.pillar,
+      format: item.format,
+      views: (item.results.viewsIG ?? 0) + (item.results.viewsFB ?? 0),
+      skip_rate: item.results.skipRate ?? 0,
+      top_source: item.results.topSource,
+      verdict: item.results.verdict,
+      lesson: item.results.lesson,
+    }));
+    await sb.from("performance_log").upsert(rows, { onConflict: "video_id" });
+
+    const keep = analyzed.map((i) => `"${i.id}"`).join(",");
+    await sb.from("performance_log").delete().not("video_id", "in", `(${keep})`);
+  } else {
+    // No analyzed items — clear the log entirely.
+    await sb.from("performance_log").delete().neq("video_id", "");
+  }
+  return analyzed.length;
 }
 
 // Re-export for routes that import these from here
-export { createVideo, createIdeaItem, defaultScript, defaultCaptions, defaultChecklist };
+export {
+  createVideo,
+  createIdeaItem,
+  defaultScript,
+  defaultCaptions,
+  defaultChecklist,
+};

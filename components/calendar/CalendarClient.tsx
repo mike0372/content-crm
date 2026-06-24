@@ -10,16 +10,22 @@ import {
 } from "@dnd-kit/core";
 import {
   CalendarPlus, FileDown, Loader2, ChevronLeft, ChevronRight,
-  Plus, X, ExternalLink, Calendar, List,
+  X, ExternalLink, Calendar, List,
 } from "lucide-react";
 import Link from "next/link";
 import {
   Video, CalendarWeek, DayKey, DAY_KEYS, DAY_LABELS,
-  PILLAR_HEX, PILLAR_COLORS, PostingWindow, POSTING_WINDOWS, Pillar, PILLARS,
+  PILLAR_HEX, Pillar, PILLARS,
+  WINDOW_DEFAULT_START, windowForMinutes,
 } from "@/lib/types";
 import { Button } from "@/components/ui/controls";
 import { PillarBadge, StatusBadge } from "@/components/ui/Badge";
-import { apiSaveCalendar, apiCreateVideo, apiGetCalendar, apiSaveVideo } from "@/lib/api";
+import { LiveIndicator, ConnectionBar } from "@/components/ui/LiveIndicator";
+import { Toast, useToast } from "@/components/ui/Toast";
+import { useLiveSync } from "@/lib/useLiveSync";
+import {
+  apiSaveCalendar, apiCreateVideo, apiGetCalendar, apiSaveVideo, apiGetVideos,
+} from "@/lib/api";
 import {
   mondayOf, weekDates, fmtDate, weekRangeLabel, isoWeek,
   monthViewMondays,
@@ -27,21 +33,46 @@ import {
 import { cn } from "@/lib/utils";
 
 // ── Time grid constants ──────────────────────────────────────────────────────
-const HOUR_HEIGHT = 64;
-const START_HOUR  = 6;
-const END_HOUR    = 23;
-const TOTAL_HOURS = END_HOUR - START_HOUR;
+const HOUR_HEIGHT  = 64;
+const START_HOUR   = 6;
+const END_HOUR     = 24;
+const TOTAL_HOURS  = END_HOUR - START_HOUR;
+const DAY_START_MIN = START_HOUR * 60;
+const DAY_END_MIN   = END_HOUR * 60;
+const SNAP_MIN     = 15;   // drag/resize snapping
+const MIN_DURATION = 15;
+const DEFAULT_DURATION = 60;
 
-const WINDOW_SLOTS: Record<PostingWindow, { startHour: number; durationHours: number }> = {
-  "Morning (7-9am)":   { startHour: 7,  durationHours: 2 },
-  "Midday (11am-1pm)": { startHour: 11, durationHours: 2 },
-  "Evening (6-8pm)":   { startHour: 18, durationHours: 2 },
-  "Night (9-11pm)":    { startHour: 21, durationHours: 2 },
-};
-
-function windowSlot(pw: PostingWindow | ""): { startHour: number; durationHours: number } {
-  return pw ? WINDOW_SLOTS[pw] : WINDOW_SLOTS["Evening (6-8pm)"];
+// ── Time helpers ──────────────────────────────────────────────────────────────
+function parseHHMM(t: string): number | null {
+  const m = /^(\d{1,2}):(\d{2})$/.exec(t.trim());
+  if (!m) return null;
+  const h = +m[1], mm = +m[2];
+  if (h > 23 || mm > 59) return null;
+  return h * 60 + mm;
 }
+function fmtHHMM(min: number): string {
+  const h = Math.floor(min / 60), m = min % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+function fmt12(min: number): string {
+  const h = Math.floor(min / 60), m = min % 60;
+  const ap = h < 12 || h === 24 ? "AM" : "PM";
+  let hh = h % 12; if (hh === 0) hh = 12;
+  return m === 0 ? `${hh} ${ap}` : `${hh}:${String(m).padStart(2, "0")} ${ap}`;
+}
+function startMinOf(v: Video): number {
+  const p = v.scheduledTime ? parseHHMM(v.scheduledTime) : null;
+  if (p !== null) return p;
+  if (v.postingWindow) return WINDOW_DEFAULT_START[v.postingWindow];
+  return 18 * 60;
+}
+function durationOf(v: Video): number {
+  return v.durationMin && v.durationMin > 0 ? v.durationMin : DEFAULT_DURATION;
+}
+const snap = (min: number) => Math.round(min / SNAP_MIN) * SNAP_MIN;
+const clampStart = (min: number, dur: number) =>
+  Math.max(DAY_START_MIN, Math.min(min, DAY_END_MIN - dur));
 
 function formatHour(h: number): string {
   if (h === 0 || h === 24) return "12 AM";
@@ -49,19 +80,46 @@ function formatHour(h: number): string {
   return h < 12 ? `${h} AM` : `${h - 12} PM`;
 }
 
-// Droppable zone ID: "{dayKey}|{windowIndex 0-3}"
-function zoneId(day: DayKey, wi: number) { return `${day}|${wi}`; }
-function parseZoneId(id: string): { day: DayKey; wi: number } | null {
-  const parts = id.split("|");
-  if (parts.length !== 2) return null;
-  const wi = parseInt(parts[1]);
-  if (isNaN(wi) || wi < 0 || wi >= POSTING_WINDOWS.length) return null;
-  if (!DAY_KEYS.includes(parts[0] as DayKey)) return null;
-  return { day: parts[0] as DayKey, wi };
-}
-
 function emptyClientWeek(week: string): CalendarWeek {
   return { week, days: { mon: [], tue: [], wed: [], thu: [], fri: [], sat: [], sun: [] } };
+}
+
+// ── Overlap layout ────────────────────────────────────────────────────────────
+// Assigns each event a column index + total columns so overlapping blocks sit
+// side-by-side. Returns events keyed by id.
+interface Placed { video: Video; start: number; dur: number; col: number; cols: number; }
+function layoutDay(videos: Video[]): Placed[] {
+  const evs = videos
+    .map(v => ({ video: v, start: startMinOf(v), dur: durationOf(v) }))
+    .sort((a, b) => a.start - b.start || a.dur - b.dur);
+
+  const placed: Placed[] = [];
+  let cluster: (Placed & { end: number })[] = [];
+  let clusterEnd = -1;
+
+  const flush = () => {
+    const colEnds: number[] = []; // last end time per column
+    for (const e of cluster) {
+      let c = colEnds.findIndex(end => end <= e.start);
+      if (c === -1) { c = colEnds.length; colEnds.push(e.end); }
+      else colEnds[c] = e.end;
+      e.col = c;
+    }
+    const total = colEnds.length;
+    for (const e of cluster) { e.cols = total; placed.push(e); }
+    cluster = [];
+    clusterEnd = -1;
+  };
+
+  for (const e of evs) {
+    const end = e.start + e.dur;
+    const item = { ...e, end, col: 0, cols: 1 } as Placed & { end: number };
+    if (cluster.length && e.start >= clusterEnd) flush();
+    cluster.push(item);
+    clusterEnd = Math.max(clusterEnd, end);
+  }
+  flush();
+  return placed;
 }
 
 // ── Event Popover ────────────────────────────────────────────────────────────
@@ -87,7 +145,6 @@ function EventPopover({
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [onClose]);
 
-  // Position right of the anchor, flip left if too close to edge
   const gap = 8;
   const popW = 260;
   let left = anchorRect.right + gap;
@@ -95,6 +152,8 @@ function EventPopover({
   const top = Math.min(anchorRect.top, window.innerHeight - 280);
   const hex = PILLAR_HEX[video.pillar];
   const hook = video.hook.line1 || video.title;
+  const start = startMinOf(video);
+  const dur = durationOf(video);
 
   return (
     <div
@@ -102,7 +161,6 @@ function EventPopover({
       style={{ position: "fixed", top, left, width: popW, zIndex: 50 }}
       className="animate-fade-in overflow-hidden rounded-xl border border-white/[0.12] bg-floating shadow-[0_8px_40px_-8px_rgba(0,0,0,0.7),0_0_0_1px_rgba(255,255,255,0.04)]"
     >
-      {/* Colour accent strip */}
       <div style={{ background: hex, height: 4 }} />
       <div className="p-4">
         <button
@@ -116,7 +174,10 @@ function EventPopover({
           <PillarBadge pillar={video.pillar} />
           <StatusBadge status={video.status} />
         </div>
-        <p className="mt-3 text-[11px] text-zinc-500">{video.postingWindow}</p>
+        <p className="mt-3 text-[11px] text-zinc-500">
+          {fmt12(start)} – {fmt12(start + dur)}
+          {video.postingWindow && <span className="text-zinc-600"> · {video.postingWindow.replace(/ \(.*\)/, "")}</span>}
+        </p>
         <div className="mt-4 flex items-center gap-2">
           <Link
             href={`/video/${video.id}`}
@@ -137,92 +198,107 @@ function EventPopover({
   );
 }
 
-// ── Event block ──────────────────────────────────────────────────────────────
-
-function EventBlock({
-  video,
-  colIndex = 0,
-  colTotal = 1,
-  isDragging = false,
-  onPopover,
-}: {
-  video: Video;
-  colIndex?: number;
-  colTotal?: number;
-  isDragging?: boolean;
-  onPopover?: (video: Video, rect: DOMRect) => void;
-}) {
-  const hex = PILLAR_HEX[video.pillar];
-  const hook = video.hook.line1 || video.title;
-  const { durationHours } = windowSlot(video.postingWindow);
-  const heightPx = durationHours * HOUR_HEIGHT - 4;
-
-  return (
-    <div
-      style={{ height: heightPx, backgroundColor: hex, boxShadow: `inset 0 0 0 1px rgba(255,255,255,0.15)` }}
-      className={cn(
-        "overflow-hidden rounded-lg px-2 py-1.5 cursor-pointer select-none transition-[opacity,filter] duration-150",
-        isDragging ? "opacity-40" : "hover:brightness-110"
-      )}
-      onClick={(e) => {
-        if (!isDragging && onPopover) {
-          e.stopPropagation();
-          onPopover(video, (e.currentTarget as HTMLElement).getBoundingClientRect());
-        }
-      }}
-    >
-      <p className="truncate text-[11px] font-semibold leading-tight text-white">{hook}</p>
-      {durationHours >= 1.5 && (
-        <p className="mt-0.5 truncate text-[10px] text-white/70">
-          {formatHour(windowSlot(video.postingWindow).startHour)}–{formatHour(windowSlot(video.postingWindow).startHour + durationHours)}
-        </p>
-      )}
-      {durationHours >= 2 && colTotal === 1 && (
-        <p className="mt-1 truncate text-[10px] text-white/55">{video.pillar}</p>
-      )}
-    </div>
-  );
-}
+// ── Draggable + resizable event block ─────────────────────────────────────────
 
 function DraggableEvent({
   video,
+  start,
+  dur,
   colIndex,
   colTotal,
   onPopover,
+  onResize,
 }: {
   video: Video;
+  start: number;
+  dur: number;
   colIndex: number;
   colTotal: number;
   onPopover: (video: Video, rect: DOMRect) => void;
+  onResize: (video: Video, durationMin: number) => void;
 }) {
-  const { startHour, durationHours } = windowSlot(video.postingWindow);
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({ id: video.id });
+  const [liveDur, setLiveDur] = useState<number | null>(null);
+
+  const hex = PILLAR_HEX[video.pillar];
+  const hook = video.hook.line1 || video.title;
+  const shownDur = liveDur ?? dur;
+
+  const top    = ((start - DAY_START_MIN) / 60) * HOUR_HEIGHT + 1;
+  const height = (shownDur / 60) * HOUR_HEIGHT - 2;
 
   const colWidth = 1 / colTotal;
   const leftPct  = colIndex * colWidth * 100;
   const widthPct = colWidth * 100;
 
+  function onResizeDown(e: React.PointerEvent) {
+    e.stopPropagation();
+    e.preventDefault();
+    const startY = e.clientY;
+    const base = dur;
+    const compute = (clientY: number) => {
+      const deltaMin = ((clientY - startY) / HOUR_HEIGHT) * 60;
+      let nd = snap(base + deltaMin);
+      nd = Math.max(MIN_DURATION, Math.min(nd, DAY_END_MIN - start));
+      return nd;
+    };
+    const move = (ev: PointerEvent) => setLiveDur(compute(ev.clientY));
+    const up = (ev: PointerEvent) => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      const nd = compute(ev.clientY);
+      setLiveDur(null);
+      if (nd !== dur) onResize(video, nd);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  }
+
   return (
     <div
       ref={setNodeRef}
-      {...attributes}
-      {...listeners}
       style={{
         position: "absolute",
-        top: (startHour - START_HOUR) * HOUR_HEIGHT + 2,
+        top,
+        height,
         left: `calc(${leftPct}% + 3px)`,
         width: `calc(${widthPct}% - 6px)`,
         zIndex: isDragging ? 0 : 1,
       }}
       className="touch-none"
     >
-      <EventBlock
-        video={video}
-        colIndex={colIndex}
-        colTotal={colTotal}
-        isDragging={isDragging}
-        onPopover={onPopover}
-      />
+      <div
+        {...attributes}
+        {...listeners}
+        style={{ backgroundColor: hex, boxShadow: "inset 0 0 0 1px rgba(255,255,255,0.15)" }}
+        className={cn(
+          "h-full overflow-hidden rounded-lg px-2 py-1 cursor-grab select-none transition-[opacity,filter] duration-150 active:cursor-grabbing",
+          isDragging ? "opacity-40" : "hover:brightness-110"
+        )}
+        onClick={(e) => {
+          if (!isDragging) {
+            e.stopPropagation();
+            onPopover(video, (e.currentTarget.parentElement as HTMLElement).getBoundingClientRect());
+          }
+        }}
+      >
+        <p className="truncate text-[11px] font-semibold leading-tight text-white">{hook}</p>
+        {height >= 30 && (
+          <p className="mt-0.5 truncate text-[10px] text-white/70">
+            {fmt12(start)}–{fmt12(start + shownDur)}
+          </p>
+        )}
+        {height >= 70 && colTotal === 1 && (
+          <p className="mt-0.5 truncate text-[10px] text-white/55">{video.pillar}</p>
+        )}
+      </div>
+      {/* Resize handle */}
+      <div
+        onPointerDown={onResizeDown}
+        className="absolute inset-x-0 bottom-0 h-2 cursor-ns-resize"
+      >
+        <div className="mx-auto mt-0.5 h-0.5 w-6 rounded-full bg-white/40" />
+      </div>
     </div>
   );
 }
@@ -230,17 +306,17 @@ function DraggableEvent({
 // Overlay shown while dragging
 function DragOverlayEvent({ video }: { video: Video }) {
   const hex = PILLAR_HEX[video.pillar];
-  const { durationHours } = windowSlot(video.postingWindow);
+  const dur = durationOf(video);
   return (
     <div
       style={{
-        width: 140,
-        height: durationHours * HOUR_HEIGHT - 4,
+        width: 150,
+        height: (dur / 60) * HOUR_HEIGHT - 2,
         backgroundColor: hex,
         boxShadow: `0 8px 32px -8px ${hex}99, 0 0 0 1px rgba(255,255,255,0.2)`,
         opacity: 0.9,
       }}
-      className="overflow-hidden rounded-lg px-2 py-1.5"
+      className="overflow-hidden rounded-lg px-2 py-1"
     >
       <p className="truncate text-[11px] font-semibold text-white">
         {video.hook.line1 || video.title}
@@ -249,92 +325,38 @@ function DragOverlayEvent({ video }: { video: Video }) {
   );
 }
 
-// ── Posting window zone (droppable) ──────────────────────────────────────────
+// ── Week day column (droppable) ───────────────────────────────────────────────
 
-function PostingWindowZone({
-  dayKey, windowIndex, videosInWindow, onAdd, onPopover,
+function WeekDayColumn({
+  dayKey, isToday, videos, onAdd, onPopover, onResize, dragJustFinished,
 }: {
   dayKey: DayKey;
-  windowIndex: number;
-  videosInWindow: Video[];
-  onAdd: (day: DayKey, window: PostingWindow) => void;
+  isToday: boolean;
+  videos: Video[];
+  onAdd: (day: DayKey, startMin: number) => void;
   onPopover: (video: Video, rect: DOMRect) => void;
+  onResize: (video: Video, durationMin: number) => void;
+  dragJustFinished: React.MutableRefObject<boolean>;
 }) {
-  const id = zoneId(dayKey, windowIndex);
-  const { setNodeRef, isOver } = useDroppable({ id });
-  const pw = POSTING_WINDOWS[windowIndex];
-  const { startHour, durationHours } = WINDOW_SLOTS[pw];
+  const { setNodeRef, isOver } = useDroppable({ id: dayKey });
+  const placed = useMemo(() => layoutDay(videos), [videos]);
+
+  function onColumnClick(e: React.MouseEvent<HTMLDivElement>) {
+    if (dragJustFinished.current) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const y = e.clientY - rect.top;
+    const min = clampStart(snap(DAY_START_MIN + (y / HOUR_HEIGHT) * 60), DEFAULT_DURATION);
+    onAdd(dayKey, min);
+  }
 
   return (
     <div
       ref={setNodeRef}
-      style={{
-        position: "absolute",
-        top: (startHour - START_HOUR) * HOUR_HEIGHT,
-        height: durationHours * HOUR_HEIGHT,
-        left: 0,
-        right: 0,
-      }}
+      onClick={onColumnClick}
       className={cn(
-        "rounded-lg transition-colors duration-100",
-        isOver && "bg-white/[0.05] ring-1 ring-inset ring-white/[0.12]"
-      )}
-    >
-      {/* Events: stacked side-by-side */}
-      {videosInWindow.map((v, i) => (
-        <DraggableEvent
-          key={v.id}
-          video={v}
-          colIndex={i}
-          colTotal={videosInWindow.length}
-          onPopover={onPopover}
-        />
-      ))}
-
-      {/* Add button when empty and not dragging-over */}
-      {videosInWindow.length === 0 && !isOver && (
-        <button
-          onClick={() => onAdd(dayKey, pw)}
-          className="group absolute inset-0.5 flex items-center justify-center rounded-lg border border-transparent opacity-0 hover:border-white/[0.08] hover:bg-white/[0.03] hover:opacity-100 transition-all"
-          aria-label={`Add reel at ${pw}`}
-        >
-          <Plus className="h-3.5 w-3.5 text-zinc-600 group-hover:text-zinc-400" strokeWidth={1.75} />
-        </button>
-      )}
-    </div>
-  );
-}
-
-// ── Week day column ──────────────────────────────────────────────────────────
-
-function WeekDayColumn({
-  dayKey, isToday, videoIds, videoById, onAdd, onPopover,
-}: {
-  dayKey: DayKey;
-  isToday: boolean;
-  videoIds: string[];
-  videoById: Map<string, Video>;
-  onAdd: (day: DayKey, window: PostingWindow) => void;
-  onPopover: (video: Video, rect: DOMRect) => void;
-}) {
-  // Group videos by posting window
-  const byWindow = useMemo<Partial<Record<PostingWindow, Video[]>>>(() => {
-    const map: Partial<Record<PostingWindow, Video[]>> = {};
-    for (const id of videoIds) {
-      const v = videoById.get(id);
-      if (!v || !v.postingWindow) continue;
-      const pw = v.postingWindow as PostingWindow;
-      if (!map[pw]) map[pw] = [];
-      map[pw]!.push(v);
-    }
-    return map;
-  }, [videoIds, videoById]);
-
-  return (
-    <div
-      className={cn(
-        "relative flex-1 border-l border-white/[0.05]",
-        isToday && "bg-blue-500/[0.025]"
+        "group/col relative flex-1 cursor-copy border-l border-white/[0.05] transition-colors",
+        isToday && "bg-blue-500/[0.025]",
+        isOver && "bg-white/[0.04]"
       )}
       style={{ height: TOTAL_HOURS * HOUR_HEIGHT }}
     >
@@ -348,15 +370,16 @@ function WeekDayColumn({
       ))}
       <div className="pointer-events-none absolute bottom-0 left-0 right-0 border-t border-white/[0.05]" />
 
-      {/* Posting window zones */}
-      {POSTING_WINDOWS.map((pw, wi) => (
-        <PostingWindowZone
-          key={pw}
-          dayKey={dayKey}
-          windowIndex={wi}
-          videosInWindow={byWindow[pw] ?? []}
-          onAdd={onAdd}
+      {placed.map(p => (
+        <DraggableEvent
+          key={p.video.id}
+          video={p.video}
+          start={p.start}
+          dur={p.dur}
+          colIndex={p.col}
+          colTotal={p.cols}
           onPopover={onPopover}
+          onResize={onResize}
         />
       ))}
     </div>
@@ -387,7 +410,6 @@ function MonthView({
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden">
-      {/* DOW headers */}
       <div className="flex flex-shrink-0 border-b border-white/[0.07]">
         {DAY_ABBRS.map(d => (
           <div key={d} className="flex-1 py-2 text-center text-[10px] font-semibold uppercase tracking-widest text-zinc-600">
@@ -396,7 +418,6 @@ function MonthView({
         ))}
       </div>
 
-      {/* Weeks grid */}
       <div className="flex flex-1 flex-col divide-y divide-white/[0.05] overflow-hidden">
         {mondays.map(monday => {
           const wk = isoWeek(monday);
@@ -406,18 +427,18 @@ function MonthView({
             d.setDate(d.getDate() + i);
             return d;
           });
-          const dayKeysRow = DAY_KEYS;
 
           return (
             <div key={wk} className="flex flex-1 divide-x divide-white/[0.05]">
               {days.map((date, i) => {
-                const dk = dayKeysRow[i];
+                const dk = DAY_KEYS[i];
                 const isCurrentMonth = date.getMonth() === month;
                 const isToday = date.toDateString() === today.toDateString();
                 const videoIds: string[] = cal?.days[dk] ?? [];
-                const videos = videoIds
+                const dayVideos = videoIds
                   .map(id => videoById.get(id))
-                  .filter((v): v is Video => !!v && !hiddenPillars.has(v.pillar));
+                  .filter((v): v is Video => !!v && !hiddenPillars.has(v.pillar))
+                  .sort((a, b) => startMinOf(a) - startMinOf(b));
 
                 return (
                   <div
@@ -438,7 +459,7 @@ function MonthView({
                         {date.getDate()}
                       </span>
                     </div>
-                    {videos.slice(0, 3).map(v => (
+                    {dayVideos.slice(0, 3).map(v => (
                       <div
                         key={v.id}
                         style={{ backgroundColor: PILLAR_HEX[v.pillar] }}
@@ -446,12 +467,12 @@ function MonthView({
                         onClick={e => e.stopPropagation()}
                       >
                         <Link href={`/video/${v.id}`} className="block truncate">
-                          {v.hook.line1 || v.title}
+                          {fmt12(startMinOf(v))} {v.hook.line1 || v.title}
                         </Link>
                       </div>
                     ))}
-                    {videos.length > 3 && (
-                      <div className="px-1 text-[10px] text-zinc-600">+{videos.length - 3} more</div>
+                    {dayVideos.length > 3 && (
+                      <div className="px-1 text-[10px] text-zinc-600">+{dayVideos.length - 3} more</div>
                     )}
                   </div>
                 );
@@ -485,6 +506,7 @@ export function CalendarClient({
   const [popover, setPopover]       = useState<{ video: Video; rect: DOMRect } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const dragJustFinished = useRef(false);
+  const { message: toast, show: showToast } = useToast();
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
 
@@ -509,6 +531,18 @@ export function CalendarClient({
   }, [videos]);
 
   const activeVideo = activeId ? videoById.get(activeId) ?? null : null;
+
+  // ── Live sync: poll videos + the currently-viewed week so reels and their
+  // calendar placement stay in step with edits from other tabs/devices.
+  const liveFetch = useCallback(
+    () => Promise.all([apiGetVideos(), apiGetCalendar(weekKey)]),
+    [weekKey]
+  );
+  const { status, mute } = useLiveSync(liveFetch, ([vids, cal]) => {
+    if (activeId) return; // never reshuffle mid-drag
+    setVideos(vids as Video[]);
+    setWeekCalendars((prev) => ({ ...prev, [cal.week]: cal as CalendarWeek }));
+  });
 
   // ── Load week when navigating
   useEffect(() => {
@@ -579,10 +613,28 @@ export function CalendarClient({
     });
   }
 
-  // ── Persist helpers
+  // ── Persist helpers (optimistic; revert + toast on failure)
   function persistCalendar(next: CalendarWeek) {
+    const prevCal = weekCalendars[next.week];
+    mute();
     setWeekCalendars(prev => ({ ...prev, [next.week]: next }));
-    apiSaveCalendar(next).catch(() => {});
+    apiSaveCalendar(next).catch(() => {
+      setWeekCalendars(prev => ({
+        ...prev,
+        [next.week]: prevCal ?? emptyClientWeek(next.week),
+      }));
+      showToast("Sync failed — retrying");
+    });
+  }
+
+  function patchVideo(updated: Video) {
+    const prev = videoById.get(updated.id);
+    mute();
+    setVideos(p => p.map(v => v.id === updated.id ? updated : v));
+    apiSaveVideo(updated).catch(() => {
+      if (prev) setVideos(p => p.map(v => v.id === updated.id ? prev : v));
+      showToast("Sync failed — retrying");
+    });
   }
 
   function togglePillar(p: Pillar) {
@@ -599,55 +651,68 @@ export function CalendarClient({
     setTimeout(() => { dragJustFinished.current = false; }, 0);
 
     setActiveId(null);
-    const { active, over } = e;
+    const { active, over, delta } = e;
     if (!over) return;
 
-    const videoId  = String(active.id);
-    const parsed   = parseZoneId(String(over.id));
-    if (!parsed) return;
-    const { day: targetDay, wi } = parsed;
-    const targetWindow = POSTING_WINDOWS[wi];
-
-    // Find source
-    let sourceDay: DayKey | undefined;
-    for (const d of DAY_KEYS) {
-      if ((weekCalendars[weekKey]?.days[d] ?? []).includes(videoId)) {
-        sourceDay = d;
-        break;
-      }
-    }
-    if (!sourceDay) return;
+    const videoId   = String(active.id);
+    const targetDay = DAY_KEYS.includes(over.id as DayKey) ? (over.id as DayKey) : null;
+    if (!targetDay) return;
 
     const video = videoById.get(videoId);
     if (!video) return;
 
-    const dayChanged    = sourceDay !== targetDay;
-    const windowChanged = targetWindow !== video.postingWindow;
-    if (!dayChanged && !windowChanged) return;
+    // Find source day in the current week
+    let sourceDay: DayKey | undefined;
+    for (const d of DAY_KEYS) {
+      if ((weekCalendars[weekKey]?.days[d] ?? []).includes(videoId)) { sourceDay = d; break; }
+    }
+    if (!sourceDay) return;
 
-    const nextCal: CalendarWeek = { ...calendar, days: { ...calendar.days } };
+    const dur      = durationOf(video);
+    const oldStart = startMinOf(video);
+    const newStart = clampStart(snap(oldStart + (delta.y / HOUR_HEIGHT) * 60), dur);
+
+    const dayChanged  = sourceDay !== targetDay;
+    const timeChanged = newStart !== oldStart;
+    if (!dayChanged && !timeChanged) return;
+
     if (dayChanged) {
+      const nextCal: CalendarWeek = { ...calendar, days: { ...calendar.days } };
       nextCal.days[sourceDay] = nextCal.days[sourceDay].filter(id => id !== videoId);
       nextCal.days[targetDay] = [...(nextCal.days[targetDay] ?? []), videoId];
+      persistCalendar(nextCal);
     }
-    persistCalendar(nextCal);
 
-    if (windowChanged) {
-      const updated = { ...video, postingWindow: targetWindow };
-      setVideos(prev => prev.map(v => v.id === videoId ? updated : v));
-      apiSaveVideo(updated).catch(() => {});
+    if (timeChanged) {
+      patchVideo({ ...video, scheduledTime: fmtHHMM(newStart), postingWindow: windowForMinutes(newStart) });
     }
   }
 
-  async function addToDay(dayKey: DayKey, window: PostingWindow) {
+  async function addToDay(dayKey: DayKey, startMin: number) {
     if (dragJustFinished.current) return;
-    const v = await apiCreateVideo({ title: "Untitled Reel", postingWindow: window });
+    mute();
+    let v: Video;
+    try {
+      v = await apiCreateVideo({
+        title: "Untitled Reel",
+        scheduledTime: fmtHHMM(startMin),
+        durationMin: DEFAULT_DURATION,
+        postingWindow: windowForMinutes(startMin),
+      });
+    } catch {
+      showToast("Sync failed — retrying");
+      return;
+    }
     setVideos(prev => [...prev, v]);
     const nextCal: CalendarWeek = {
       ...calendar,
       days: { ...calendar.days, [dayKey]: [...(calendar.days[dayKey] ?? []), v.id] },
     };
     persistCalendar(nextCal);
+  }
+
+  function onResize(video: Video, durationMin: number) {
+    patchVideo({ ...video, durationMin });
   }
 
   function removeFromCalendar(videoId: string) {
@@ -683,22 +748,21 @@ export function CalendarClient({
     }
   }
 
-  // ── Visible video IDs (respect pillar filter)
-  function visibleIds(ids: string[]): string[] {
-    return ids.filter(id => {
-      const v = videoById.get(id);
-      return v && !hiddenPillars.has(v.pillar);
-    });
+  // ── Visible videos for a day (respect pillar filter)
+  function visibleVideos(ids: string[]): Video[] {
+    return ids
+      .map(id => videoById.get(id))
+      .filter((v): v is Video => !!v && !hiddenPillars.has(v.pillar));
   }
 
   return (
     <div className="flex h-screen flex-col overflow-hidden">
+      <ConnectionBar status={status} />
 
       {/* ── Top navigation bar ── */}
       <div className="flex flex-shrink-0 items-center gap-3 border-b border-white/[0.09] bg-[rgba(5,15,30,0.55)] px-5 py-3 backdrop-blur-[40px] shadow-[inset_0_-1px_0_rgba(255,255,255,0.04)]">
         <h1 className="text-[17px] font-bold tracking-[-0.025em] text-white">Calendar</h1>
 
-        {/* Week/Month toggle */}
         <div className="ml-1 flex rounded-lg border border-white/[0.1] p-0.5">
           <button
             onClick={() => setView("week")}
@@ -720,7 +784,6 @@ export function CalendarClient({
           </button>
         </div>
 
-        {/* Navigation */}
         <div className="ml-1 flex items-center gap-1">
           <button
             onClick={goToToday}
@@ -738,6 +801,7 @@ export function CalendarClient({
         </div>
 
         <div className="ml-auto flex items-center gap-2">
+          <LiveIndicator status={status} />
           <Button onClick={() => persistCalendar(emptyClientWeek(weekKey))}>
             <CalendarPlus className="h-4 w-4" strokeWidth={1.75} /> New Week
           </Button>
@@ -760,7 +824,7 @@ export function CalendarClient({
               onClick={() => togglePillar(p)}
               style={hidden ? {} : { borderColor: `${hex}60`, backgroundColor: `${hex}18`, color: hex }}
               className={cn(
-                "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-all",
+                "rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-[transform,color,background-color,border-color,opacity] duration-200 hover:-translate-y-px active:scale-95",
                 hidden
                   ? "border-white/[0.08] text-zinc-600 hover:border-white/[0.15] hover:text-zinc-400"
                   : "opacity-100"
@@ -800,10 +864,14 @@ export function CalendarClient({
           {/* Day column headers */}
           <div className="flex flex-shrink-0 border-b border-white/[0.09] bg-[rgba(5,15,30,0.35)]">
             <div className="w-14 flex-shrink-0 border-r border-white/[0.05]" />
-            {DAY_KEYS.map(k => {
+            {DAY_KEYS.map((k, i) => {
               const isToday = todayKey === k;
               return (
-                <div key={k} className="flex flex-1 flex-col items-center border-l border-white/[0.05] py-2">
+                <div
+                  key={k}
+                  style={{ animationDelay: `${i * 45}ms` }}
+                  className="flex flex-1 animate-fade-in-down flex-col items-center border-l border-white/[0.05] py-2"
+                >
                   <span className={cn("text-[10px] font-semibold uppercase tracking-[0.12em]", isToday ? "text-blue-400" : "text-zinc-600")}>
                     {DAY_LABELS[k].slice(0, 3)}
                   </span>
@@ -822,18 +890,21 @@ export function CalendarClient({
           <DndContext
             sensors={sensors}
             collisionDetection={pointerWithin}
-            onDragStart={(e: DragStartEvent) => setActiveId(String(e.active.id))}
+            onDragStart={(e: DragStartEvent) => {
+              mute(15000);
+              setActiveId(String(e.active.id));
+            }}
             onDragEnd={onDragEnd}
           >
             <div ref={scrollRef} className="flex flex-1 overflow-y-auto">
               {/* Hour labels */}
-              <div className="relative w-14 flex-shrink-0 border-r border-white/[0.05]">
+              <div className="relative w-14 flex-shrink-0 border-r border-white/[0.05]" style={{ height: TOTAL_HOURS * HOUR_HEIGHT }}>
                 {Array.from({ length: TOTAL_HOURS + 1 }, (_, i) => {
                   const h = START_HOUR + i;
                   return (
-                    <div key={h} style={{ height: HOUR_HEIGHT }} className="relative">
+                    <div key={h} style={{ position: "absolute", top: i * HOUR_HEIGHT }} className="right-2">
                       {i > 0 && (
-                        <span className="absolute -top-2.5 right-2 select-none text-[10px] text-zinc-600">
+                        <span className="absolute -top-2 right-2 select-none text-[10px] text-zinc-600 whitespace-nowrap">
                           {formatHour(h)}
                         </span>
                       )}
@@ -849,10 +920,11 @@ export function CalendarClient({
                     key={k}
                     dayKey={k}
                     isToday={todayKey === k}
-                    videoIds={visibleIds(calendar.days[k] ?? [])}
-                    videoById={videoById}
+                    videos={visibleVideos(calendar.days[k] ?? [])}
                     onAdd={addToDay}
                     onPopover={(v, rect) => setPopover({ video: v, rect })}
+                    onResize={onResize}
+                    dragJustFinished={dragJustFinished}
                   />
                 ))}
 
@@ -862,7 +934,7 @@ export function CalendarClient({
                     className="pointer-events-none absolute left-0 right-0 z-10 flex items-center"
                     style={{ top: currentTimeTop }}
                   >
-                    <div className="h-2.5 w-2.5 flex-shrink-0 rounded-full bg-red-500" style={{ marginLeft: -5 }} />
+                    <div className="h-2.5 w-2.5 flex-shrink-0 animate-pulse rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.7)]" style={{ marginLeft: -5 }} />
                     <div className="h-px flex-1 bg-red-500/70" />
                   </div>
                 )}
@@ -885,6 +957,8 @@ export function CalendarClient({
           onRemove={removeFromCalendar}
         />
       )}
+
+      <Toast message={toast} />
     </div>
   );
 }

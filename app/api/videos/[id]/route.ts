@@ -6,19 +6,21 @@ export const dynamic = "force-dynamic";
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const item = await getContentItem(params.id);
+  const { id } = await params;
+  const item = await getContentItem(id);
   if (!item) return NextResponse.json({ error: "not found" }, { status: 404 });
   return NextResponse.json(item);
 }
 
 export async function PUT(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const incoming = (await req.json()) as ContentItem;
-  const existing = await getContentItem(params.id);
+  const existing = await getContentItem(id);
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
 
   // append status history on status change
@@ -28,7 +30,7 @@ export async function PUT(
       { status: incoming.status, timestamp: new Date().toISOString() },
     ];
   }
-  incoming.id = params.id;
+  incoming.id = id;
   incoming.createdAt = existing.createdAt;
   const saved = await saveContentItem(incoming);
   return NextResponse.json(saved);
@@ -36,8 +38,9 @@ export async function PUT(
 
 export async function DELETE(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  await deleteContentItem(params.id);
+  const { id } = await params;
+  await deleteContentItem(id);
   return NextResponse.json({ ok: true });
 }

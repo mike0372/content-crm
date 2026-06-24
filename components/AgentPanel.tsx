@@ -1,8 +1,21 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { X, Send, Sparkles, RotateCcw, CheckCircle2, XCircle, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+
+// Minimal, XSS-safe markdown: **bold** + line breaks, rendered as React nodes
+// (never raw HTML) so model output can't inject markup or scripts.
+function renderMarkdown(text: string) {
+  return text.split("\n").map((line, li) => (
+    <Fragment key={li}>
+      {li > 0 && <br />}
+      {line.split(/\*\*(.+?)\*\*/g).map((part, pi) =>
+        pi % 2 === 1 ? <strong key={pi}>{part}</strong> : part
+      )}
+    </Fragment>
+  ));
+}
 
 // ---- Types ------------------------------------------------------------------
 
@@ -60,7 +73,7 @@ function DiffCard({
   const rows = flattenDiff(diff.before, diff.after);
 
   return (
-    <div className="mt-1 rounded-xl overflow-hidden border border-white/[0.08] bg-[rgba(9,18,32,0.70)] shadow-[0_4px_24px_rgba(0,0,0,0.35)]">
+    <div className="mt-1 animate-scale-in rounded-xl overflow-hidden border border-white/[0.08] bg-[rgba(9,18,32,0.70)] shadow-[0_4px_24px_rgba(0,0,0,0.35)]">
       {/* Header */}
       <div className="flex items-center gap-2 border-b border-white/[0.07] px-4 py-2.5 bg-white/[0.025]">
         <span className="font-mono text-[10px] uppercase tracking-[0.18em] text-[#3b82f6]">Proposed change</span>
@@ -137,7 +150,7 @@ function ChatBubble({ msg, onApprove, onReject }: {
 
   if (isUser) {
     return (
-      <div className="flex justify-end">
+      <div className="flex animate-fade-in-up justify-end">
         <div className="max-w-[85%] rounded-2xl rounded-tr-sm bg-[#3b82f6]/15 px-4 py-2.5 text-[13px] text-zinc-100 ring-1 ring-[#3b82f6]/20">
           {msg.content}
         </div>
@@ -146,7 +159,7 @@ function ChatBubble({ msg, onApprove, onReject }: {
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className="flex animate-fade-in-up flex-col gap-1">
       <div className="flex items-start gap-2">
         <div className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3b82f6] to-[#06b6d4] shadow-[0_0_12px_rgba(59,130,246,0.35)]">
           <Sparkles className="h-3 w-3 text-white" strokeWidth={2} />
@@ -158,13 +171,9 @@ function ChatBubble({ msg, onApprove, onReject }: {
               ? "bg-[rgba(59,130,246,0.08)] text-zinc-200 ring-1 ring-[#3b82f6]/15"
               : "bg-white/[0.055] text-zinc-200 ring-1 ring-white/[0.07]"
           )}
-          // Simple markdown: bold and line breaks
-          dangerouslySetInnerHTML={{
-            __html: msg.content
-              .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-              .replace(/\n/g, "<br/>"),
-          }}
-        />
+        >
+          {renderMarkdown(msg.content)}
+        </div>
       </div>
       {msg.agentType === "diff" && msg.diff && (
         <div className="ml-8">

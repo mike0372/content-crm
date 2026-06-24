@@ -1,21 +1,32 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowLeft,
   Plus,
   Trash2,
-  GripVertical,
   Check,
   X,
+  Link2,
+  Loader2,
+  RotateCw,
+  ExternalLink,
+  Unlink,
+  Film,
+  Search,
+  Download,
+  Sparkles,
+  PencilLine,
 } from "lucide-react";
 import {
   Video,
+  Results,
   STATUSES,
   PILLARS,
   FORMATS,
   POSTING_WINDOWS,
+  DURATION_OPTIONS,
   BEAT_LABELS,
   TRIGGER_TYPES,
   Beat,
@@ -26,7 +37,22 @@ import { Button, Card, Input, Label, Select, Textarea, Chip } from "@/components
 import { PillarBadge, StatusBadge } from "@/components/ui/Badge";
 import { SaveIndicator, CopyButton } from "@/components/ui/misc";
 import { useAutosave } from "@/lib/useAutosave";
-import { apiSaveVideo } from "@/lib/api";
+import {
+  apiSaveVideo,
+  apiGetInstagram,
+  apiSyncInstagram,
+  apiGenerateLesson,
+  type IgCache,
+  type IgPost,
+} from "@/lib/api";
+import {
+  computeMetrics,
+  overallVerdict,
+  VERDICT_HEX,
+  type MetricRow,
+  type MetricVerdict,
+  type OverallVerdict,
+} from "@/lib/reelVerdict";
 import { uid } from "@/lib/factories";
 import { cn } from "@/lib/utils";
 
@@ -47,9 +73,10 @@ function wordCount(s: string) {
 
 export function VideoEditor({ initial, initialTab }: { initial: Video; initialTab?: string }) {
   const [video, setVideo] = useState<Video>(initial);
-  const [tab, setTab] = useState<Tab>(
-    initialTab && (TABS as readonly string[]).includes(initialTab) ? (initialTab as Tab) : "META"
-  );
+  const [tab, setTab] = useState<Tab>(() => {
+    const want = initialTab?.toUpperCase();
+    return want && (TABS as readonly string[]).includes(want) ? (want as Tab) : "META";
+  });
   const { state, schedule } = useAutosave<Video>(apiSaveVideo);
 
   function update(patch: Partial<Video> | ((v: Video) => Video)) {
@@ -66,9 +93,9 @@ export function VideoEditor({ initial, initialTab }: { initial: Video; initialTa
         <div className="flex items-center justify-between gap-4">
           <Link
             href="/board"
-            className="inline-flex items-center gap-1.5 text-sm text-zinc-400 outline-none transition-colors hover:text-white focus-visible:text-white"
+            className="group inline-flex items-center gap-1.5 text-sm text-zinc-400 outline-none transition-colors hover:text-white focus-visible:text-white"
           >
-            <ArrowLeft className="h-4 w-4" strokeWidth={1.75} /> Board
+            <ArrowLeft className="h-4 w-4 transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:-translate-x-0.5" strokeWidth={1.75} /> Board
           </Link>
           <SaveIndicator state={state} />
         </div>
@@ -95,14 +122,14 @@ export function VideoEditor({ initial, initialTab }: { initial: Video; initialTa
             >
               {t}
               {tab === t && (
-                <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-[#3b82f6]" />
+                <span className="absolute inset-x-2 -bottom-px h-0.5 animate-scale-in rounded-full bg-[#3b82f6]" />
               )}
             </button>
           ))}
         </nav>
       </header>
 
-      <div className="mx-auto max-w-4xl animate-fade-in px-7 py-7">
+      <div key={tab} className="mx-auto max-w-4xl animate-fade-in-up px-7 py-7">
         {tab === "META" && <MetaTab video={video} update={update} />}
         {tab === "HOOK" && <HookTab video={video} update={update} />}
         {tab === "SCRIPT" && <ScriptTab video={video} update={update} />}
@@ -165,9 +192,22 @@ function MetaTab({ video, update }: TabProps) {
         </Field>
         <Field label="Posting window">
           <Select value={video.postingWindow} onChange={(e) => update({ postingWindow: e.target.value as Video["postingWindow"] })}>
+            <option value="">—</option>
             {POSTING_WINDOWS.map((w) => (
               <option key={w} value={w}>
                 {w}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Scheduled time">
+          <Input type="time" value={video.scheduledTime} onChange={(e) => update({ scheduledTime: e.target.value })} />
+        </Field>
+        <Field label="Duration">
+          <Select value={String(video.durationMin || 60)} onChange={(e) => update({ durationMin: Number(e.target.value) })}>
+            {DURATION_OPTIONS.map((d) => (
+              <option key={d.value} value={d.value}>
+                {d.label}
               </option>
             ))}
           </Select>
@@ -501,7 +541,568 @@ function NumField({
   );
 }
 
+// ---- RESULTS tab: reel linking + automatic stats analysis -------------------
+
+function fmtDate(ts: string): string {
+  try {
+    return new Date(ts).toLocaleDateString(undefined, {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  } catch {
+    return ts;
+  }
+}
+
+// Resolve a pasted reel URL / shortcode / numeric ID to a known media ID.
+function resolvePasted(value: string, posts: IgPost[]): string | null {
+  const v = value.trim();
+  if (!v) return null;
+  if (/^\d+$/.test(v)) return v; // raw numeric media ID
+  const code = v.match(/\/(?:reel|reels|p)\/([^/?#]+)/i)?.[1];
+  if (code) {
+    const hit = posts.find((p) => p.permalink.includes(code));
+    if (hit) return hit.id;
+  }
+  return v; // fall back to raw value (will show "not in cache — refresh")
+}
+
+const OVERALL_STYLE: Record<OverallVerdict, string> = {
+  WIN: "#22c55e",
+  MEH: "#eab308",
+  FLOP: "#ef4444",
+};
+
 function ResultsTab({ video, update }: TabProps) {
+  const [cache, setCache] = useState<IgCache | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [extrasOpen, setExtrasOpen] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    apiGetInstagram()
+      .then((c) => alive && setCache(c))
+      .catch(() => alive && setCache(null))
+      .finally(() => alive && setLoading(false));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  const linkedId = video.instagramMediaId;
+  const post = useMemo(
+    () => cache?.posts.find((p) => p.id === linkedId) ?? null,
+    [cache, linkedId]
+  );
+  const canLink = video.status === "POSTED" || video.status === "ANALYZED";
+
+  async function refresh() {
+    setSyncing(true);
+    try {
+      setCache(await apiSyncInstagram());
+    } catch {
+      /* keep existing cache */
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  function link(id: string) {
+    update({ instagramMediaId: id });
+    setManualOpen(false);
+  }
+
+  // STATE B — linked reel
+  if (linkedId) {
+    return (
+      <LinkedPanel
+        video={video}
+        update={update}
+        post={post}
+        syncing={syncing}
+        onRefresh={refresh}
+        extrasOpen={extrasOpen}
+        setExtrasOpen={setExtrasOpen}
+      />
+    );
+  }
+
+  // Not linked, status not POSTED/ANALYZED, or user chose manual → plain form
+  if (!canLink || manualOpen) {
+    return (
+      <div className="space-y-4">
+        {canLink && (
+          <button
+            onClick={() => setManualOpen(false)}
+            className="inline-flex items-center gap-1.5 text-xs text-zinc-500 outline-none transition-colors hover:text-zinc-300 focus-visible:text-zinc-300"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" strokeWidth={1.75} /> Back to linking
+          </button>
+        )}
+        <ManualResultsForm video={video} update={update} />
+      </div>
+    );
+  }
+
+  // STATE A — not yet linked
+  return (
+    <LinkScreen
+      posts={cache?.posts ?? []}
+      loading={loading}
+      syncing={syncing}
+      onSync={refresh}
+      onLink={link}
+      onManual={() => setManualOpen(true)}
+    />
+  );
+}
+
+// ---- STATE A — link screen --------------------------------------------------
+
+function LinkScreen({
+  posts,
+  loading,
+  syncing,
+  onSync,
+  onLink,
+  onManual,
+}: {
+  posts: IgPost[];
+  loading: boolean;
+  syncing: boolean;
+  onSync: () => void;
+  onLink: (id: string) => void;
+  onManual: () => void;
+}) {
+  const [paste, setPaste] = useState("");
+  const reels = posts.filter((p) => p.mediaType === "REEL" || p.mediaType === "VIDEO");
+  const list = reels.length > 0 ? reels : posts;
+
+  return (
+    <Card elevated className="space-y-7 p-6">
+      <div className="text-center">
+        <div className="mx-auto mb-3 grid h-11 w-11 place-items-center rounded-full bg-[#3b82f6]/10 text-[#60a5fa] ring-1 ring-inset ring-[#3b82f6]/25">
+          <Link2 className="h-5 w-5" strokeWidth={1.75} />
+        </div>
+        <h2 className="text-lg font-bold tracking-tight text-white">
+          Link this reel to Instagram
+        </h2>
+        <p className="mx-auto mt-1 max-w-sm text-sm text-zinc-500">
+          Bind this item to its posted reel so live metrics flow back here and get
+          graded automatically.
+        </p>
+      </div>
+
+      {/* Option 1 — pick from recent reels */}
+      <div>
+        <div className="mb-2.5 flex items-center justify-between">
+          <Label className="mb-0">Pick from recent reels</Label>
+          <button
+            onClick={onSync}
+            disabled={syncing}
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-zinc-400 outline-none transition-colors hover:bg-white/[0.06] hover:text-zinc-100 focus-visible:ring-2 focus-visible:ring-[#3b82f6]/40 disabled:opacity-50"
+          >
+            {syncing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} />
+            ) : (
+              <RotateCw className="h-3.5 w-3.5" strokeWidth={1.75} />
+            )}
+            Sync
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="grid place-items-center gap-2 rounded-xl border border-dashed border-white/[0.08] py-10 text-center">
+            <Loader2 className="h-5 w-5 animate-spin text-zinc-600" strokeWidth={1.75} />
+          </div>
+        ) : list.length === 0 ? (
+          <div className="grid place-items-center gap-3 rounded-xl border border-dashed border-white/[0.08] py-10 text-center">
+            <Search className="h-6 w-6 text-zinc-700" strokeWidth={1.5} />
+            <p className="text-sm text-zinc-500">No reels in the Instagram cache yet.</p>
+            <Button variant="outline" onClick={onSync} disabled={syncing}>
+              {syncing ? (
+                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+              ) : (
+                <RotateCw className="h-4 w-4" strokeWidth={1.75} />
+              )}
+              Sync Instagram
+            </Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
+            {list.map((p) => (
+              <button
+                key={p.id}
+                onClick={() => onLink(p.id)}
+                className="group/card flex flex-col overflow-hidden rounded-xl border border-white/[0.06] bg-base text-left outline-none transition-[transform,border-color,box-shadow] duration-200 ease-[cubic-bezier(0.16,1,0.3,1)] hover:-translate-y-0.5 hover:border-[#3b82f6]/40 hover:shadow-[0_0_0_1px_rgba(59,130,246,0.18),0_10px_30px_-12px_rgba(59,130,246,0.35)] focus-visible:ring-2 focus-visible:ring-[#3b82f6]/40"
+              >
+                <div className="relative aspect-[4/5] w-full overflow-hidden bg-surface2">
+                  {p.thumbnailUrl || p.mediaUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={(p.thumbnailUrl || p.mediaUrl) as string}
+                      alt=""
+                      className="h-full w-full object-cover transition-transform duration-300 group-hover/card:scale-[1.03]"
+                    />
+                  ) : (
+                    <div className="grid h-full w-full place-items-center text-zinc-700">
+                      <Film className="h-6 w-6" strokeWidth={1.5} />
+                    </div>
+                  )}
+                </div>
+                <div className="p-2.5">
+                  <p className="line-clamp-2 text-xs leading-snug text-zinc-200">
+                    {p.caption ? p.caption.slice(0, 60) : (
+                      <span className="text-zinc-600">No caption</span>
+                    )}
+                  </p>
+                  <p className="mt-1 font-mono text-[10px] text-zinc-500">
+                    {fmtDate(p.timestamp)} · {fmtViews(p.plays)} views
+                  </p>
+                </div>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Option 2 — paste URL / media ID */}
+      <div>
+        <Label>Or paste URL / media ID</Label>
+        <div className="flex items-center gap-2">
+          <Input
+            value={paste}
+            onChange={(e) => setPaste(e.target.value)}
+            placeholder="instagram.com/reel/XXX or media ID"
+            className="flex-1"
+          />
+          <Button
+            variant="subtle"
+            onClick={() => {
+              const id = resolvePasted(paste, posts);
+              if (id) onLink(id);
+            }}
+            disabled={!paste.trim()}
+          >
+            <Link2 className="h-4 w-4" strokeWidth={1.75} /> Connect
+          </Button>
+        </div>
+      </div>
+
+      <div className="border-t border-white/[0.06] pt-4 text-center">
+        <button
+          onClick={onManual}
+          className="text-xs text-zinc-500 underline-offset-4 outline-none transition-colors hover:text-zinc-300 hover:underline focus-visible:text-zinc-300"
+        >
+          Fill manually instead
+        </button>
+      </div>
+    </Card>
+  );
+}
+
+function fmtViews(n: number | null | undefined): string {
+  if (n == null) return "—";
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
+  return String(n);
+}
+
+// ---- STATE B — linked metrics panel -----------------------------------------
+
+function LinkedPanel({
+  video,
+  update,
+  post,
+  syncing,
+  onRefresh,
+  extrasOpen,
+  setExtrasOpen,
+}: {
+  video: Video;
+  update: TabProps["update"];
+  post: IgPost | null;
+  syncing: boolean;
+  onRefresh: () => void;
+  extrasOpen: boolean;
+  setExtrasOpen: (v: boolean) => void;
+}) {
+  const r = video.results;
+  const setR = (patch: Partial<Results>) => update({ results: { ...r, ...patch } });
+  const [genLoading, setGenLoading] = useState(false);
+  const [pulled, setPulled] = useState(false);
+
+  const rows = useMemo(() => computeMetrics(post, r), [post, r]);
+  const auto = useMemo(() => overallVerdict(rows), [rows]);
+  const selectedVerdict = (r.verdict || auto) as OverallVerdict;
+  const counts = useMemo(() => {
+    let win = 0, ok = 0, flop = 0;
+    for (const m of rows) {
+      if (m.informational || m.verdict == null) continue;
+      if (m.verdict === "WIN") win++;
+      else if (m.verdict === "OK") ok++;
+      else flop++;
+    }
+    return { win, ok, flop };
+  }, [rows]);
+
+  function unlink() {
+    if (window.confirm("Unlink this Instagram reel? Pulled metrics stay in the fields.")) {
+      update({ instagramMediaId: null });
+    }
+  }
+
+  async function generateLesson() {
+    setGenLoading(true);
+    try {
+      const metrics = rows
+        .filter((m) => !m.informational && m.verdict != null)
+        .map((m) => ({ name: m.label, value: m.display, verdict: m.verdict as string }));
+      const lesson = await apiGenerateLesson(metrics);
+      if (lesson) setR({ lesson });
+    } catch {
+      /* leave field untouched */
+    } finally {
+      setGenLoading(false);
+    }
+  }
+
+  function pullIntoResults() {
+    const igViews = post?.plays ?? r.viewsIG;
+    update({
+      results: {
+        ...r,
+        viewsIG: igViews ?? r.viewsIG,
+        likes: post?.likeCount ?? r.likes,
+        comments: post?.commentsCount ?? r.comments,
+        saves: post?.saved ?? r.saves,
+        topSource: r.topSource || (post ? "Instagram" : r.topSource),
+        verdict: r.verdict || auto,
+      },
+      status: "ANALYZED",
+    });
+    setPulled(true);
+    setTimeout(() => setPulled(false), 2500);
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* 1 — linked reel header */}
+      <Card className="flex items-center gap-3 p-4">
+        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-base">
+          {post && (post.thumbnailUrl || post.mediaUrl) ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={(post.thumbnailUrl || post.mediaUrl) as string}
+              alt=""
+              className="h-full w-full object-cover"
+            />
+          ) : (
+            <div className="grid h-full w-full place-items-center text-zinc-700">
+              <Film className="h-6 w-6" strokeWidth={1.5} />
+            </div>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="line-clamp-2 text-sm text-zinc-200">
+            {post?.caption || (
+              <span className="text-zinc-500">
+                Media {video.instagramMediaId} — not in cache, hit Refresh
+              </span>
+            )}
+          </p>
+          <div className="mt-1 flex items-center gap-3 text-[11px] text-zinc-500">
+            {post && <span>{fmtDate(post.timestamp)}</span>}
+            {post?.permalink && (
+              <a
+                href={post.permalink}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[#60a5fa] outline-none transition-colors hover:text-[#93c5fd] focus-visible:ring-2 focus-visible:ring-[#3b82f6]/40"
+              >
+                Open on Instagram <ExternalLink className="h-3 w-3" strokeWidth={1.75} />
+              </a>
+            )}
+          </div>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-1.5">
+          <button
+            onClick={onRefresh}
+            disabled={syncing}
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-zinc-400 outline-none transition-colors hover:bg-white/[0.06] hover:text-zinc-100 focus-visible:ring-2 focus-visible:ring-[#3b82f6]/40 disabled:opacity-50"
+          >
+            {syncing ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} />
+            ) : (
+              <RotateCw className="h-3.5 w-3.5" strokeWidth={1.75} />
+            )}
+            Refresh stats
+          </button>
+          <button
+            onClick={unlink}
+            className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] text-zinc-500 outline-none transition-colors hover:bg-rose-500/10 hover:text-rose-300 focus-visible:ring-2 focus-visible:ring-rose-500/40"
+          >
+            <Unlink className="h-3.5 w-3.5" strokeWidth={1.75} /> Unlink
+          </button>
+        </div>
+      </Card>
+
+      {/* 2 — stats panel with per-metric verdict */}
+      {!post && (
+        <div className="flex items-center justify-between rounded-lg border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3 text-xs text-amber-200/80">
+          No live data for this media ID yet — try Refresh, or add values manually below.
+        </div>
+      )}
+      <Card elevated className="divide-y divide-white/[0.05] p-0">
+        {rows.map((m) => (
+          <MetricRowView key={m.key} row={m} />
+        ))}
+      </Card>
+
+      {/* manual extras — fields the Graph API doesn't expose, feed the verdicts */}
+      <div>
+        <button
+          onClick={() => setExtrasOpen(!extrasOpen)}
+          className="inline-flex items-center gap-1.5 text-xs text-zinc-500 outline-none transition-colors hover:text-zinc-300 focus-visible:text-zinc-300"
+        >
+          <PencilLine className="h-3.5 w-3.5" strokeWidth={1.75} />
+          {extrasOpen ? "Hide manual fields" : "Add missing data (FB views, top source, follows)"}
+        </button>
+        {extrasOpen && (
+          <Card className="mt-2 grid gap-4 p-5 sm:grid-cols-3">
+            <NumField label="Views FB" value={r.viewsFB} onChange={(v) => setR({ viewsFB: v })} />
+            <Field label="Top source">
+              <Input value={r.topSource} onChange={(e) => setR({ topSource: e.target.value })} placeholder="Reels tab / Explore / Stories" />
+            </Field>
+            <NumField label="Follows" value={r.follows} onChange={(v) => setR({ follows: v })} />
+          </Card>
+        )}
+      </div>
+
+      {/* 3 — overall verdict (auto, overridable) */}
+      <Card className="space-y-3 p-5">
+        <div className="flex items-center justify-between">
+          <Label className="mb-0">Overall verdict</Label>
+          <span className="font-mono text-[10px] text-zinc-600">
+            {counts.win}W · {counts.ok}OK · {counts.flop}F · auto: {auto}
+          </span>
+        </div>
+        <div className="flex gap-2">
+          {(["WIN", "MEH", "FLOP"] as OverallVerdict[]).map((v) => {
+            const active = selectedVerdict === v;
+            return (
+              <button
+                key={v}
+                onClick={() => setR({ verdict: r.verdict === v ? "" : v })}
+                className={cn(
+                  "inline-flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-bold outline-none transition-[transform,box-shadow] duration-200 hover:-translate-y-px active:scale-95 focus-visible:ring-2 focus-visible:ring-[#3b82f6]/40",
+                  active ? "text-white" : "text-zinc-500 ring-1 ring-inset ring-white/[0.08] hover:text-zinc-300"
+                )}
+                style={
+                  active
+                    ? {
+                        backgroundColor: `${OVERALL_STYLE[v]}26`,
+                        boxShadow: `inset 0 0 0 1px ${OVERALL_STYLE[v]}66`,
+                        color: OVERALL_STYLE[v],
+                      }
+                    : undefined
+                }
+              >
+                {v}
+                {v === auto && !r.verdict && (
+                  <span className="font-mono text-[9px] uppercase opacity-70">auto</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+
+      {/* 4 — lesson learned */}
+      <Card className="space-y-2 p-5">
+        <div className="flex items-center justify-between">
+          <Label className="mb-0">Lesson learned</Label>
+          <Button size="sm" variant="subtle" onClick={generateLesson} disabled={genLoading}>
+            {genLoading ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} />
+            ) : (
+              <Sparkles className="h-3.5 w-3.5" strokeWidth={1.75} />
+            )}
+            Generate lesson
+          </Button>
+        </div>
+        <Textarea
+          value={r.lesson}
+          onChange={(e) => setR({ lesson: e.target.value })}
+          placeholder="What worked, what to change next time…"
+        />
+      </Card>
+
+      {/* 5 — pull into results */}
+      <div className="flex items-center justify-between rounded-lg bg-white/[0.03] px-4 py-3">
+        <p className="text-xs text-zinc-500">
+          Writes live values into Results and marks{" "}
+          <span className="text-emerald-400">Analyzed</span>.
+        </p>
+        <Button variant="primary" onClick={pullIntoResults}>
+          {pulled ? (
+            <Check className="h-4 w-4" strokeWidth={1.75} />
+          ) : (
+            <Download className="h-4 w-4" strokeWidth={1.75} />
+          )}
+          {pulled ? "Pulled — set to Analyzed" : "Pull into Results"}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function MetricRowView({ row }: { row: MetricRow }) {
+  return (
+    <div className="flex items-center gap-3 px-5 py-3.5">
+      <div className="w-32 shrink-0">
+        <div className="font-mono text-[10px] uppercase tracking-wider text-zinc-600">
+          {row.label}
+        </div>
+        <div className="mt-0.5 text-lg font-bold tabular-nums text-zinc-100">
+          {row.display}
+        </div>
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-xs leading-relaxed text-zinc-400">{row.explanation}</p>
+      </div>
+      <div className="shrink-0">
+        {row.informational ? (
+          <span className="rounded-full bg-white/[0.05] px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-500">
+            Info
+          </span>
+        ) : row.verdict == null ? (
+          <span className="rounded-full bg-white/[0.04] px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+            No data
+          </span>
+        ) : (
+          <span
+            className="rounded-full px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wider"
+            style={{
+              backgroundColor: `${VERDICT_HEX[row.verdict]}22`,
+              color: VERDICT_HEX[row.verdict],
+              boxShadow: `inset 0 0 0 1px ${VERDICT_HEX[row.verdict]}55`,
+            }}
+          >
+            {row.verdict}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ---- Manual form (unchanged original RESULTS form) --------------------------
+
+function ManualResultsForm({ video, update }: TabProps) {
   const r = video.results;
   const setR = (patch: Partial<Video["results"]>) => update({ results: { ...r, ...patch } });
   const verdicts: Video["results"]["verdict"][] = ["WIN", "MEH", "FLOP"];

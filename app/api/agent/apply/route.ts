@@ -3,8 +3,6 @@ import {
   getContentItem,
   saveContentItem,
   deleteContentItem,
-  getIdeas,
-  saveIdeas,
   getCalendar,
   saveCalendar,
 } from "@/lib/data";
@@ -19,25 +17,71 @@ type AgentAction =
   | { type: "delete_idea"; id: string }
   | { type: "patch_calendar"; patch: Partial<CalendarWeek> };
 
+// Fields the agent is allowed to write. Identity/lifecycle fields (id, stage,
+// createdAt, updatedAt, statusHistory) are managed by the server, never patched.
+const PATCHABLE_FIELDS: ReadonlySet<keyof ContentItem> = new Set([
+  "status",
+  "title",
+  "pillar",
+  "hookType",
+  "format",
+  "lengthTarget",
+  "postingWindow",
+  "scheduledTime",
+  "durationMin",
+  "sourceUrl",
+  "demandSignal",
+  "recognitionScore",
+  "hook",
+  "script",
+  "captions",
+  "engagement",
+  "checklist",
+  "results",
+  "seriesName",
+  "partNumber",
+  "instagramMediaId",
+] as (keyof ContentItem)[]);
+
+function sanitizePatch(patch: Partial<ContentItem> | undefined): Partial<ContentItem> {
+  const clean: Partial<ContentItem> = {};
+  if (!patch || typeof patch !== "object") return clean;
+  for (const key of Object.keys(patch) as (keyof ContentItem)[]) {
+    if (PATCHABLE_FIELDS.has(key)) {
+      (clean as Record<string, unknown>)[key] = patch[key];
+    }
+  }
+  return clean;
+}
+
 export async function POST(req: NextRequest) {
-  const { action } = (await req.json()) as { action: AgentAction };
+  let action: AgentAction;
+  try {
+    ({ action } = (await req.json()) as { action: AgentAction });
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+  if (!action || typeof action.type !== "string") {
+    return NextResponse.json({ error: "Missing action" }, { status: 400 });
+  }
 
   switch (action.type) {
     case "patch_video": {
       const existing = await getContentItem(action.id);
       if (!existing)
         return NextResponse.json({ error: "Video not found" }, { status: 404 });
+      const patch = sanitizePatch(action.patch);
       const updated: ContentItem = {
         ...existing,
-        ...action.patch,
+        ...patch,
         id: existing.id,
         createdAt: existing.createdAt,
         stage: existing.stage,
       };
-      if (action.patch.status && action.patch.status !== existing.status) {
+      if (patch.status && patch.status !== existing.status) {
         updated.statusHistory = [
           ...(existing.statusHistory ?? []),
-          { status: action.patch.status, timestamp: new Date().toISOString() },
+          { status: patch.status, timestamp: new Date().toISOString() },
         ];
       }
       await saveContentItem(updated);
@@ -55,7 +99,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Idea not found" }, { status: 404 });
       const updated: ContentItem = {
         ...existing,
-        ...action.patch,
+        ...sanitizePatch(action.patch),
         id: existing.id,
         stage: "idea",
       };
@@ -64,9 +108,7 @@ export async function POST(req: NextRequest) {
     }
 
     case "delete_idea": {
-      const ideas = await getIdeas();
-      const filtered = ideas.filter((i) => i.id !== action.id);
-      await saveIdeas(filtered);
+      await deleteContentItem(action.id);
       return NextResponse.json({ ok: true });
     }
 

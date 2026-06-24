@@ -23,7 +23,15 @@ import {
 import { PageHeader } from "@/components/PageHeader";
 import { Button } from "@/components/ui/controls";
 import { PillarBadge } from "@/components/ui/Badge";
-import { apiDeleteIdea, apiCreateIdea, apiImportIdeas } from "@/lib/api";
+import { LiveIndicator, ConnectionBar } from "@/components/ui/LiveIndicator";
+import { Toast, useToast } from "@/components/ui/Toast";
+import { useLiveSync } from "@/lib/useLiveSync";
+import {
+  apiDeleteIdea,
+  apiCreateIdea,
+  apiImportIdeas,
+  apiGetIdeas,
+} from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 // ---- Mini readiness bar -----------------------------------------------------
@@ -107,7 +115,7 @@ function IdeaCard({
   const hookPreview = idea.hook?.line1 || "";
 
   return (
-    <div className="group relative rounded-xl border border-white/[0.06] bg-surface shadow-[0_1px_3px_rgba(0,0,0,0.4)] transition-[border-color,box-shadow] hover:border-white/[0.12] hover:shadow-[0_4px_16px_-4px_rgba(0,0,0,0.5)]">
+    <div className="hover-lift group relative rounded-xl border border-white/[0.06] bg-surface shadow-[0_1px_3px_rgba(0,0,0,0.4)] hover:border-white/[0.12]">
       <Link
         href={`/ideas/${idea.id}`}
         className="block p-5 outline-none focus-visible:rounded-xl focus-visible:ring-2 focus-visible:ring-accent/40"
@@ -146,7 +154,7 @@ function IdeaCard({
             {new Date(idea.createdAt).toLocaleDateString()}
           </span>
           <span className="flex items-center gap-1 text-[11px] text-zinc-600 opacity-0 transition-opacity group-hover:opacity-100">
-            Edit <ArrowUpRight className="h-3 w-3" strokeWidth={1.75} />
+            Edit <ArrowUpRight className="icon-pop h-3 w-3" strokeWidth={1.75} />
           </span>
         </div>
       </Link>
@@ -189,6 +197,14 @@ export function IdeasClient({ initialIdeas }: { initialIdeas: ContentItem[] }) {
   const [pillarFilter, setPillarFilter] = useState<Pillar | "all">("all");
   const [readinessFilter, setReadinessFilter] = useState<ReadinessFilter>("all");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { message: toast, show: showToast } = useToast();
+
+  // Live sync: ideas are the same rows everywhere, so poll the server and keep
+  // this list in step with edits made on the editor page or other devices.
+  const { status, mute } = useLiveSync<ContentItem[]>(apiGetIdeas, (server) => {
+    if (deletingId) return; // don't resurrect a row mid-delete
+    setIdeas(server);
+  });
 
   function showFlash(msg: string) {
     setFlash(msg);
@@ -200,6 +216,7 @@ export function IdeasClient({ initialIdeas }: { initialIdeas: ContentItem[] }) {
     if (!file) return;
     e.target.value = "";
     setImporting(true);
+    mute(8000);
     try {
       const result = await apiImportIdeas(file);
       setIdeas((prev) => [...result.ideas, ...prev]);
@@ -224,9 +241,12 @@ export function IdeasClient({ initialIdeas }: { initialIdeas: ContentItem[] }) {
 
   async function handleDelete(id: string) {
     setDeletingId(id);
+    mute();
     try {
       await apiDeleteIdea(id);
       setIdeas((prev) => prev.filter((i) => i.id !== id));
+    } catch {
+      showToast("Couldn't delete — check connection");
     } finally {
       setDeletingId(null);
     }
@@ -266,10 +286,12 @@ export function IdeasClient({ initialIdeas }: { initialIdeas: ContentItem[] }) {
 
   return (
     <>
+      <ConnectionBar status={status} />
       <PageHeader
         title="Idea Bank"
         subtitle={`${ideas.length} ideas · ${readyCount} ready to shoot`}
       >
+        <LiveIndicator status={status} />
         <input
           ref={fileInputRef}
           type="file"
@@ -392,13 +414,18 @@ export function IdeasClient({ initialIdeas }: { initialIdeas: ContentItem[] }) {
 
       {/* Grid */}
       <div className="grid grid-cols-1 gap-4 px-7 py-5 md:grid-cols-2 xl:grid-cols-3">
-        {displayed.map((idea) => (
-          <IdeaCard
+        {displayed.map((idea, i) => (
+          <div
             key={idea.id}
-            idea={idea}
-            onDelete={handleDelete}
-            deleting={deletingId === idea.id}
-          />
+            className="animate-fade-in-up"
+            style={{ animationDelay: `${Math.min(i, 12) * 40}ms` }}
+          >
+            <IdeaCard
+              idea={idea}
+              onDelete={handleDelete}
+              deleting={deletingId === idea.id}
+            />
+          </div>
         ))}
 
         {displayed.length === 0 && ideas.length > 0 && (
@@ -421,6 +448,8 @@ export function IdeasClient({ initialIdeas }: { initialIdeas: ContentItem[] }) {
           </div>
         )}
       </div>
+
+      <Toast message={toast} />
     </>
   );
 }

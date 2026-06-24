@@ -46,10 +46,10 @@ export function PipelineSection({ videos }: { videos: ContentItem[] }) {
 
   return (
     <Link href="/board" className="block group">
-      <Card className="h-full p-5 transition-colors group-hover:border-[#3b82f6]/30">
+      <Card className="hover-lift h-full p-5 group-hover:border-[#3b82f6]/30">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-zinc-200">Pipeline Health</h3>
-          <ChevronRight className="h-4 w-4 text-zinc-600 transition-colors group-hover:text-[#3b82f6]" strokeWidth={1.75} />
+          <ChevronRight className="h-4 w-4 text-zinc-600 transition-[color,transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:translate-x-0.5 group-hover:text-[#3b82f6]" strokeWidth={1.75} />
         </div>
 
         <div className="grid grid-cols-5 gap-2 mb-4">
@@ -117,10 +117,10 @@ export function IdeaBankSection({ ideas }: { ideas: ContentItem[] }) {
 
   return (
     <Link href="/ideas" className="block group">
-      <Card className="h-full p-5 transition-colors group-hover:border-[#3b82f6]/30">
+      <Card className="hover-lift h-full p-5 group-hover:border-[#3b82f6]/30">
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-sm font-semibold text-zinc-200">Idea Bank</h3>
-          <ChevronRight className="h-4 w-4 text-zinc-600 transition-colors group-hover:text-[#3b82f6]" strokeWidth={1.75} />
+          <ChevronRight className="h-4 w-4 text-zinc-600 transition-[color,transform] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:translate-x-0.5 group-hover:text-[#3b82f6]" strokeWidth={1.75} />
         </div>
 
         <div className="mb-3 flex items-baseline gap-2">

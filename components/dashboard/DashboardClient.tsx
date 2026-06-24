@@ -59,13 +59,13 @@ export function DashboardClient({ igCache: initialIgCache, videos, ideas, calWee
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-20 flex flex-wrap items-center justify-between gap-4 border-b border-white/[0.09] bg-[rgba(5,15,30,0.55)] px-7 py-5 backdrop-blur-[40px] backdrop-saturate-[180%] shadow-[inset_0_-1px_0_rgba(255,255,255,0.04)]">
-        <div>
+        <div className="animate-fade-in-down">
           <h1 className="text-[22px] font-bold tracking-[-0.025em] text-white">
             {greeting()}{firstName ? `, ${firstName}` : ""}
           </h1>
           <p className="mt-0.5 text-[13px] text-zinc-500">{todayLabel()}</p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex animate-fade-in-down items-center gap-3 [animation-delay:80ms]">
           {igCache?.lastSync && (
             <span className="text-xs text-zinc-500">
               Synced {minsAgo(igCache.lastSync)}
@@ -85,7 +85,7 @@ export function DashboardClient({ igCache: initialIgCache, videos, ideas, calWee
           </div>
         )}
 
-        <section>
+        <section className="animate-fade-in-up">
           <div className="mb-3 flex items-center gap-2">
             <Film className="h-4 w-4 text-[#3b82f6]" strokeWidth={1.75} />
             <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-[#3b82f6]">
@@ -104,7 +104,7 @@ export function DashboardClient({ igCache: initialIgCache, videos, ideas, calWee
           )}
         </section>
 
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="grid animate-fade-in-up grid-cols-1 gap-4 [animation-delay:80ms] md:grid-cols-2">
           <section>
             <div className="mb-3">
               <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
@@ -124,7 +124,7 @@ export function DashboardClient({ igCache: initialIgCache, videos, ideas, calWee
           </section>
         </div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="grid animate-fade-in-up grid-cols-1 gap-4 [animation-delay:160ms] lg:grid-cols-3">
           <section className="lg:col-span-1">
             <div className="mb-3">
               <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
@@ -153,7 +153,7 @@ export function DashboardClient({ igCache: initialIgCache, videos, ideas, calWee
           </section>
         </div>
 
-        <section>
+        <section className="animate-fade-in-up [animation-delay:240ms]">
           <div className="mb-3">
             <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
               Consistency

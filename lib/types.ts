@@ -35,6 +35,42 @@ export const POSTING_WINDOWS = [
 ] as const;
 export type PostingWindow = (typeof POSTING_WINDOWS)[number];
 
+// Time-of-day range (minutes from midnight) each posting window represents.
+// The category is a coarse bucket; a block's exact time can sit anywhere.
+export const WINDOW_RANGES: Record<PostingWindow, { startMin: number; endMin: number }> = {
+  "Morning (7-9am)":   { startMin: 7 * 60,  endMin: 11 * 60 },
+  "Midday (11am-1pm)": { startMin: 11 * 60, endMin: 16 * 60 },
+  "Evening (6-8pm)":   { startMin: 16 * 60, endMin: 20 * 60 + 30 },
+  "Night (9-11pm)":    { startMin: 20 * 60 + 30, endMin: 23 * 60 + 59 },
+};
+
+// Default start time (minutes) used when an item has a window but no exact time.
+export const WINDOW_DEFAULT_START: Record<PostingWindow, number> = {
+  "Morning (7-9am)":   7 * 60,
+  "Midday (11am-1pm)": 11 * 60,
+  "Evening (6-8pm)":   18 * 60,
+  "Night (9-11pm)":    21 * 60,
+};
+
+// Duration choices offered in the editors (minutes).
+export const DURATION_OPTIONS: { value: number; label: string }[] = [
+  { value: 15,  label: "15 min" },
+  { value: 30,  label: "30 min" },
+  { value: 45,  label: "45 min" },
+  { value: 60,  label: "1 hr" },
+  { value: 90,  label: "1.5 hr" },
+  { value: 120, label: "2 hr" },
+];
+
+// Infer the posting-window category from a start time (minutes from midnight).
+export function windowForMinutes(min: number): PostingWindow {
+  for (const w of POSTING_WINDOWS) {
+    const { startMin, endMin } = WINDOW_RANGES[w];
+    if (min >= startMin && min < endMin) return w;
+  }
+  return min < WINDOW_RANGES["Morning (7-9am)"].startMin ? "Morning (7-9am)" : "Night (9-11pm)";
+}
+
 export const HOOK_TYPES = ["H1", "H2", "H3", "H4", "H5", "H6"] as const;
 export type HookType = (typeof HOOK_TYPES)[number];
 export const HOOK_TYPE_LABELS: Record<HookType, string> = {
@@ -150,6 +186,10 @@ export interface ContentItem {
   format: Format;
   lengthTarget: string;
   postingWindow: PostingWindow | "";
+  // Calendar scheduling. postingWindow is only the time-of-day category;
+  // scheduledTime ("HH:MM", 24h) + durationMin place the block at any interval.
+  scheduledTime: string; // "" = fall back to the window's default start
+  durationMin: number; // minutes, default 60
   sourceUrl: string; // kept for VideoEditor backward compat (= demandSignal.source for production)
   // demand
   demandSignal: DemandSignal;
@@ -165,6 +205,9 @@ export interface ContentItem {
   // meta
   seriesName: string;
   partNumber: number | null;
+  // Bound Instagram media ID — links this item to its posted reel so live
+  // metrics flow back from the Instagram cache. null = not linked.
+  instagramMediaId: string | null;
   statusHistory: StatusEvent[];
   createdAt: string;
   updatedAt: string;

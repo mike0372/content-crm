@@ -14,9 +14,10 @@ export const dynamic = "force-dynamic";
 
 export async function POST(
   _req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const item = await getContentItem(params.id);
+  const { id } = await params;
+  const item = await getContentItem(id);
   if (!item) return NextResponse.json({ error: "not found" }, { status: 404 });
   if (item.stage !== "idea")
     return NextResponse.json({ error: "already promoted" }, { status: 400 });

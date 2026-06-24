@@ -73,6 +73,8 @@ export interface NewVideoInput {
   format?: Format;
   lengthTarget?: string;
   postingWindow?: PostingWindow;
+  scheduledTime?: string;
+  durationMin?: number;
   sourceUrl?: string;
   status?: Status;
   hookLine1?: string;
@@ -92,6 +94,8 @@ export function createVideo(input: NewVideoInput = {}): ContentItem {
     format: input.format ?? "Screen recording",
     lengthTarget: input.lengthTarget ?? "30s",
     postingWindow: input.postingWindow ?? "Evening (6-8pm)",
+    scheduledTime: input.scheduledTime ?? "",
+    durationMin: input.durationMin ?? 60,
     sourceUrl: input.sourceUrl ?? "",
     demandSignal: { text: "", source: input.sourceUrl ?? "", date: "" },
     recognitionScore: 3,
@@ -130,6 +134,7 @@ export function createVideo(input: NewVideoInput = {}): ContentItem {
     },
     seriesName: "",
     partNumber: null,
+    instagramMediaId: null,
     statusHistory: [{ status, timestamp: ts }],
     createdAt: ts,
     updatedAt: ts,
@@ -157,6 +162,8 @@ export function createIdeaItem(input: NewIdeaInput = {}): ContentItem {
     format: "Talking head",
     lengthTarget: "",
     postingWindow: "",
+    scheduledTime: "",
+    durationMin: 60,
     sourceUrl: input.sourceUrl ?? "",
     demandSignal: { text: "", source: input.sourceUrl ?? "", date: "" },
     recognitionScore: input.recognitionScore ?? 3,
@@ -195,6 +202,7 @@ export function createIdeaItem(input: NewIdeaInput = {}): ContentItem {
     },
     seriesName: "",
     partNumber: null,
+    instagramMediaId: null,
     statusHistory: [{ status: "TO_SHOOT", timestamp: ts }],
     createdAt: ts,
     updatedAt: ts,

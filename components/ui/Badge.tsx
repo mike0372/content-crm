@@ -37,7 +37,7 @@ export function StatusBadge({ status, className }: { status: Status; className?:
         className
       )}
     >
-      <span className={cn("h-1.5 w-1.5 rounded-full", c.dot)} />
+      <span className={cn("h-1.5 w-1.5 animate-pulse-glow rounded-full", c.dot)} />
       {STATUS_LABELS[status]}
     </span>
   );

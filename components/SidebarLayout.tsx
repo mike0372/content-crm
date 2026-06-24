@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import { Sidebar } from "@/components/Sidebar";
 import { AgentPanel } from "@/components/AgentPanel";
 
 export function SidebarLayout({ children }: { children: React.ReactNode }) {
+  const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -24,6 +26,11 @@ export function SidebarLayout({ children }: { children: React.ReactNode }) {
   }
 
   const sidebarWidth = mounted ? (collapsed ? 56 : 232) : 232;
+
+  // Auth pages render without the app chrome.
+  if (pathname === "/login") {
+    return <main className="min-h-screen">{children}</main>;
+  }
 
   return (
     <>

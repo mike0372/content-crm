@@ -8,6 +8,11 @@ async function j<T>(res: Response): Promise<T> {
 
 // ---- Videos (production-stage items) ----------------------------------------
 
+// Fetch all production-stage items (used by live-sync polling on the Board).
+export async function apiGetVideos(): Promise<ContentItem[]> {
+  return j<ContentItem[]>(await fetch("/api/videos", { cache: "no-store" }));
+}
+
 export async function apiSaveVideo(item: ContentItem): Promise<ContentItem> {
   return j<ContentItem>(
     await fetch(`/api/videos/${item.id}`, {
@@ -38,7 +43,9 @@ export async function apiDeleteVideo(id: string): Promise<void> {
 
 export async function apiGetCalendar(week: string): Promise<CalendarWeek> {
   return j<CalendarWeek>(
-    await fetch(`/api/calendar?week=${encodeURIComponent(week)}`)
+    await fetch(`/api/calendar?week=${encodeURIComponent(week)}`, {
+      cache: "no-store",
+    })
   );
 }
 
@@ -55,6 +62,11 @@ export async function apiSaveCalendar(
 }
 
 // ---- Ideas ------------------------------------------------------------------
+
+// Fetch all idea-stage items (used by live-sync polling on the Ideas page).
+export async function apiGetIdeas(): Promise<ContentItem[]> {
+  return j<ContentItem[]>(await fetch("/api/ideas", { cache: "no-store" }));
+}
 
 // Save a single idea item (used by IdeaEditor autosave)
 export async function apiSaveIdea(idea: ContentItem): Promise<ContentItem> {
@@ -118,8 +130,193 @@ export async function apiImportIdeas(
   );
 }
 
+// Extracted idea fields from a single document (in-editor autofill). The shape
+// mirrors the comprehensive extraction prompt — every field (and nested field)
+// may be null when the AI couldn't find it in the document.
+export interface AutofillScorecard {
+  recognition: boolean | null;
+  openLoop: boolean | null;
+  firstTwoS: boolean | null;
+  specificity: boolean | null;
+  identity: boolean | null;
+}
+
+export interface AutofillBeat {
+  timestamp: string | null;
+  label: string | null;
+  content: string | null;
+  retentionNote: string | null;
+}
+
+export interface AutofillCaption {
+  text: string | null;
+  hashtags: string | null;
+  recommended: boolean | null;
+}
+
+export interface AutofillFields {
+  title: string | null;
+  pillar: string | null;
+  hookType: string | null;
+  format: string | null;
+  lengthTarget: string | null;
+  postingWindow: string | null;
+  demandSignal: {
+    text: string | null;
+    source: string | null;
+    date: string | null;
+  } | null;
+  recognitionScore: number | null;
+  hook: {
+    line1: string | null;
+    line2: string | null;
+    firstTwoSeconds: string | null;
+    scorecard: AutofillScorecard | null;
+  } | null;
+  script: AutofillBeat[] | null;
+  captions: AutofillCaption[] | null;
+  engagement: {
+    triggerType: string | null;
+    triggerText: string | null;
+    firstComment: string | null;
+    endCard: string | null;
+  } | null;
+}
+
+// Autofill: extract fields from a PDF/TXT for the currently open idea.
+export async function apiAutofillIdea(file: File): Promise<AutofillFields> {
+  const body = new FormData();
+  body.append("file", file);
+  const { fields } = await j<{ fields: AutofillFields }>(
+    await fetch("/api/ideas/autofill", { method: "POST", body })
+  );
+  return fields;
+}
+
+// Context passed to the AI script generator (already-extracted fields).
+export interface ScriptGenContext {
+  title?: string;
+  hookLine1?: string;
+  hookLine2?: string;
+  firstTwoSeconds?: string;
+  pillar?: string;
+  format?: string;
+  lengthTarget?: string;
+  demandSignal?: string;
+}
+
+// Generate a beat-by-beat script from the extracted idea context.
+export async function apiGenerateScript(
+  ctx: ScriptGenContext
+): Promise<AutofillBeat[]> {
+  const { beats } = await j<{ beats: AutofillBeat[] }>(
+    await fetch("/api/ideas/generate-script", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(ctx),
+    })
+  );
+  return beats;
+}
+
+// Complete an entire idea with AI: generates the script from the hook, then
+// every other section from the hook + script. Returns the same nested field
+// shape as autofill so the editor merges it the same way (never overwriting).
+export async function apiCompleteIdea(
+  ctx: ScriptGenContext
+): Promise<AutofillFields> {
+  const { fields } = await j<{ fields: AutofillFields }>(
+    await fetch("/api/ideas/complete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(ctx),
+    })
+  );
+  return fields;
+}
+
+// ---- Global save ------------------------------------------------------------
+
+export interface SaveResult {
+  videos: number;
+  ideas: number;
+  total: number;
+  calendarWeek: string;
+  savedAt: string;
+}
+
+// Confirm everything is committed to Supabase (used by the sidebar Save button,
+// after it flushes any open editor's pending autosave).
+export async function apiSave(): Promise<SaveResult> {
+  return j<SaveResult>(await fetch("/api/save", { method: "POST" }));
+}
+
 // ---- Instagram --------------------------------------------------------------
 
+// Client-safe shape of the Instagram cache (mirror of lib/instagram types,
+// kept here so client components never import the server-only module).
+export interface IgPost {
+  id: string;
+  caption: string;
+  mediaType: "IMAGE" | "VIDEO" | "REEL" | "CAROUSEL_ALBUM";
+  timestamp: string;
+  thumbnailUrl: string | null;
+  mediaUrl: string | null;
+  permalink: string;
+  likeCount: number;
+  commentsCount: number;
+  impressions: number;
+  reach: number;
+  saved: number;
+  plays: number;
+  shares: number;
+  avgWatchTime: number;
+}
+
+export interface IgCache {
+  accountId: string;
+  username: string;
+  name: string;
+  followersCount: number;
+  mediaCount: number;
+  lastSync: string;
+  posts: IgPost[];
+}
+
+// Read the cached Instagram data (returns null if no sync has happened yet).
+export async function apiGetInstagram(): Promise<IgCache | null> {
+  const res = await fetch("/api/instagram");
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json() as Promise<IgCache>;
+}
+
+// Trigger a fresh Graph sync and return the updated cache (Refresh button).
+export async function apiSyncInstagram(): Promise<IgCache> {
+  return j<IgCache>(await fetch("/api/instagram/sync", { method: "POST" }));
+}
+
+// Full sync: pulls Meta/Graph API data AND reconciles all CRM content into
+// Supabase, then returns the fresh Instagram cache for the UI.
 export async function apiRefreshInstagram(): Promise<unknown> {
-  return j(await fetch("/api/instagram", { method: "POST" }));
+  const res = await j<{ instagram: unknown }>(
+    await fetch("/api/sync", { method: "POST" })
+  );
+  return res.instagram;
+}
+
+// ---- Results lesson ---------------------------------------------------------
+
+// Generate a one-line "lesson learned" from the linked reel's metric verdicts.
+export async function apiGenerateLesson(
+  metrics: { name: string; value: string; verdict: string }[]
+): Promise<string> {
+  const { lesson } = await j<{ lesson: string }>(
+    await fetch("/api/results/lesson", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ metrics }),
+    })
+  );
+  return lesson;
 }

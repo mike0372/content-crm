@@ -50,5 +50,18 @@ export function useAutosave<T>(
     };
   }, []);
 
+  // flush immediately when the global Save button fires "app:flush-save"
+  useEffect(() => {
+    const onFlush = () => {
+      if (timer.current) {
+        clearTimeout(timer.current);
+        timer.current = null;
+      }
+      if (latest.current !== null) run();
+    };
+    window.addEventListener("app:flush-save", onFlush);
+    return () => window.removeEventListener("app:flush-save", onFlush);
+  }, [run]);
+
   return { state, schedule };
 }

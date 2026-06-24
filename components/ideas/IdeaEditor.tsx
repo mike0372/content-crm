@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -18,6 +18,9 @@ import {
   Link2,
   Calendar,
   GripVertical,
+  Sparkles,
+  Wand2,
+  RefreshCw,
 } from "lucide-react";
 import {
   ContentItem,
@@ -26,12 +29,18 @@ import {
   HOOK_TYPE_LABELS,
   FORMATS,
   POSTING_WINDOWS,
+  DURATION_OPTIONS,
   BEAT_LABELS,
   TRIGGER_TYPES,
   Beat,
+  BeatLabel,
+  Caption,
   Scorecard,
   Pillar,
   HookType,
+  Format,
+  PostingWindow,
+  TriggerType,
   calcReadiness,
   readinessLabel,
   demandFreshness,
@@ -48,9 +57,36 @@ import {
 import { PillarBadge } from "@/components/ui/Badge";
 import { SaveIndicator } from "@/components/ui/misc";
 import { useAutosave } from "@/lib/useAutosave";
-import { apiSaveIdea, apiPromoteIdea } from "@/lib/api";
+import {
+  apiSaveIdea,
+  apiPromoteIdea,
+  apiAutofillIdea,
+  apiGenerateScript,
+  apiCompleteIdea,
+  AutofillFields,
+} from "@/lib/api";
 import { uid } from "@/lib/factories";
 import { cn } from "@/lib/utils";
+import { LinkedReelSection } from "@/components/ideas/LinkedReelSection";
+
+// ---- AI autofill tag --------------------------------------------------------
+// Briefly marks a field the autofill just populated, then fades out.
+
+type AiState = { fields: Set<string>; fade: boolean };
+
+function AiTag({ ai, name }: { ai: AiState; name: string }) {
+  if (!ai.fields.has(name)) return null;
+  return (
+    <span
+      className={cn(
+        "ml-1.5 inline-flex items-center gap-0.5 rounded-full bg-[#3b82f6]/15 px-1.5 py-0.5 align-middle text-[9px] font-bold uppercase tracking-wider text-[#60a5fa] ring-1 ring-inset ring-[#3b82f6]/30 transition-opacity duration-500",
+        ai.fade ? "opacity-0" : "opacity-100"
+      )}
+    >
+      <Sparkles className="h-2.5 w-2.5" strokeWidth={2} /> AI
+    </span>
+  );
+}
 
 // ---- Readiness meter --------------------------------------------------------
 
@@ -105,15 +141,22 @@ function Section({
   defaultOpen = true,
   isEmpty,
   emptyLabel,
+  openSignal,
   children,
 }: {
   title: string;
   defaultOpen?: boolean;
   isEmpty?: boolean;
   emptyLabel?: string;
+  // When this counter increments (autofill/script-gen populated this section),
+  // force the section open so the user sees what was filled.
+  openSignal?: number;
   children: React.ReactNode;
 }) {
   const [open, setOpen] = useState(defaultOpen || !isEmpty);
+  useEffect(() => {
+    if (openSignal && openSignal > 0) setOpen(true);
+  }, [openSignal]);
   return (
     <div className="overflow-hidden rounded-xl border border-white/[0.06] bg-surface shadow-[0_1px_3px_rgba(0,0,0,0.4)]">
       <button
@@ -143,7 +186,7 @@ function Field({
   label,
   children,
 }: {
-  label: string;
+  label: React.ReactNode;
   children: React.ReactNode;
 }) {
   return (
@@ -254,14 +297,18 @@ function CopyBtn({ text }: { text: string }) {
 function CoreSection({
   item,
   update,
+  ai,
+  openSignal,
 }: {
   item: ContentItem;
   update: (p: Partial<ContentItem>) => void;
+  ai: AiState;
+  openSignal?: number;
 }) {
   return (
-    <Section title="1 — Core">
+    <Section title="1 — Core" openSignal={openSignal}>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Pillar">
+        <Field label={<>Pillar<AiTag ai={ai} name="pillar" /></>}>
           <Select
             value={item.pillar}
             onChange={(e) => update({ pillar: e.target.value as Pillar })}
@@ -274,7 +321,7 @@ function CoreSection({
           </Select>
         </Field>
 
-        <Field label="Hook type">
+        <Field label={<>Hook type<AiTag ai={ai} name="hookType" /></>}>
           <Select
             value={item.hookType}
             onChange={(e) => update({ hookType: e.target.value as HookType | "" })}
@@ -288,7 +335,7 @@ function CoreSection({
           </Select>
         </Field>
 
-        <Field label="Format">
+        <Field label={<>Format<AiTag ai={ai} name="format" /></>}>
           <Select
             value={item.format}
             onChange={(e) =>
@@ -303,7 +350,7 @@ function CoreSection({
           </Select>
         </Field>
 
-        <Field label="Length target">
+        <Field label={<>Length target<AiTag ai={ai} name="lengthTarget" /></>}>
           <Input
             value={item.lengthTarget}
             onChange={(e) => update({ lengthTarget: e.target.value })}
@@ -312,9 +359,9 @@ function CoreSection({
         </Field>
       </div>
 
-      <Field label="Posting window">
-        <div className="flex gap-2">
-          {(["Evening (6-8pm)", "Night (9-11pm)"] as const).map((w) => (
+      <Field label={<>Posting window<AiTag ai={ai} name="postingWindow" /></>}>
+        <div className="flex flex-wrap gap-2">
+          {POSTING_WINDOWS.map((w) => (
             <button
               key={w}
               onClick={() =>
@@ -327,32 +374,33 @@ function CoreSection({
                   : "border-white/[0.07] bg-base text-zinc-400 hover:border-white/20 hover:text-zinc-200"
               )}
             >
-              {w === "Evening (6-8pm)" ? "Evening" : "Late night"}
+              {w.replace(/ \(.*\)/, "")}
             </button>
           ))}
-          {item.postingWindow &&
-            !["Evening (6-8pm)", "Night (9-11pm)"].includes(
-              item.postingWindow
-            ) && (
-              <Select
-                value={item.postingWindow}
-                onChange={(e) =>
-                  update({
-                    postingWindow:
-                      e.target.value as ContentItem["postingWindow"],
-                  })
-                }
-                className="flex-1"
-              >
-                {POSTING_WINDOWS.map((w) => (
-                  <option key={w} value={w}>
-                    {w}
-                  </option>
-                ))}
-              </Select>
-            )}
         </div>
       </Field>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Scheduled time">
+          <Input
+            type="time"
+            value={item.scheduledTime}
+            onChange={(e) => update({ scheduledTime: e.target.value })}
+          />
+        </Field>
+        <Field label="Duration">
+          <Select
+            value={String(item.durationMin || 60)}
+            onChange={(e) => update({ durationMin: Number(e.target.value) })}
+          >
+            {DURATION_OPTIONS.map((d) => (
+              <option key={d.value} value={d.value}>
+                {d.label}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </div>
     </Section>
   );
 }
@@ -362,17 +410,21 @@ function CoreSection({
 function DemandSection({
   item,
   update,
+  ai,
+  openSignal,
 }: {
   item: ContentItem;
   update: (p: Partial<ContentItem>) => void;
+  ai: AiState;
+  openSignal?: number;
 }) {
   const ds = item.demandSignal ?? { text: "", source: "", date: "" };
   const setDs = (patch: Partial<typeof ds>) =>
     update({ demandSignal: { ...ds, ...patch } });
 
   return (
-    <Section title="2 — Demand Signal">
-      <Field label="Evidence">
+    <Section title="2 — Demand Signal" openSignal={openSignal}>
+      <Field label={<>Evidence<AiTag ai={ai} name="demandText" /></>}>
         <Textarea
           value={ds.text}
           onChange={(e) => setDs({ text: e.target.value })}
@@ -382,7 +434,7 @@ function DemandSection({
       </Field>
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Source URL">
+        <Field label={<>Source URL<AiTag ai={ai} name="sourceUrl" /></>}>
           <div className="flex items-center gap-2">
             <Link2
               className="h-4 w-4 shrink-0 text-zinc-600"
@@ -408,7 +460,7 @@ function DemandSection({
           </div>
         </Field>
 
-        <Field label="Date">
+        <Field label={<>Date<AiTag ai={ai} name="demandDate" /></>}>
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <input
@@ -448,9 +500,13 @@ function DemandSection({
 function HookSection({
   item,
   update,
+  ai,
+  openSignal,
 }: {
   item: ContentItem;
   update: (p: Partial<ContentItem>) => void;
+  ai: AiState;
+  openSignal?: number;
 }) {
   const h = item.hook;
   const setHook = (patch: Partial<ContentItem["hook"]>) =>
@@ -460,8 +516,8 @@ function HookSection({
   const scorecardCount = Object.values(h.scorecard).filter(Boolean).length;
 
   return (
-    <Section title="3 — Hook">
-      <Field label={`Hook line 1 — ${l1}/12 words`}>
+    <Section title="3 — Hook" openSignal={openSignal}>
+      <Field label={<>Hook line 1 — {l1}/12 words<AiTag ai={ai} name="hookLine1" /></>}>
         <Input
           value={h.line1}
           onChange={(e) => setHook({ line1: e.target.value })}
@@ -470,7 +526,7 @@ function HookSection({
         />
       </Field>
 
-      <Field label={`Hook line 2 — ${l2}/6 words`}>
+      <Field label={<>Hook line 2 — {l2}/6 words<AiTag ai={ai} name="hookLine2" /></>}>
         <Input
           value={h.line2}
           onChange={(e) => setHook({ line2: e.target.value })}
@@ -479,7 +535,7 @@ function HookSection({
         />
       </Field>
 
-      <Field label="First-2-seconds plan">
+      <Field label={<>First-2-seconds plan<AiTag ai={ai} name="firstTwoSeconds" /></>}>
         <Textarea
           value={h.firstTwoSeconds}
           onChange={(e) => setHook({ firstTwoSeconds: e.target.value })}
@@ -488,7 +544,7 @@ function HookSection({
       </Field>
 
       <div>
-        <Label>Hook scorecard — {scorecardCount}/5</Label>
+        <Label>Hook scorecard — {scorecardCount}/5<AiTag ai={ai} name="scorecard" /></Label>
         <div className="flex flex-wrap gap-2">
           {SCORE_LABELS.map(({ key, label }) => {
             const on = h.scorecard[key];
@@ -518,7 +574,7 @@ function HookSection({
       </div>
 
       <div>
-        <Label>Topic recognition score</Label>
+        <Label>Topic recognition score<AiTag ai={ai} name="recognitionScore" /></Label>
         <StarSelector
           value={item.recognitionScore ?? 3}
           onChange={(v) => update({ recognitionScore: v })}
@@ -536,9 +592,21 @@ function HookSection({
 function ScriptSection({
   item,
   update,
+  ai,
+  openSignal,
+  generating,
+  showGenerate,
+  showRegenerate,
+  onGenerate,
 }: {
   item: ContentItem;
   update: (p: Partial<ContentItem>) => void;
+  ai: AiState;
+  openSignal?: number;
+  generating: boolean;
+  showGenerate: boolean;
+  showRegenerate: boolean;
+  onGenerate: () => void;
 }) {
   const beats = item.script ?? [];
   const setBeats = (script: Beat[]) => update({ script });
@@ -557,12 +625,61 @@ function ScriptSection({
     <Section
       title="4 — Script"
       defaultOpen={false}
-      isEmpty={isEmpty}
+      isEmpty={isEmpty && !showGenerate}
       emptyLabel="Optional at idea stage"
+      openSignal={openSignal}
     >
+      {/* AI script generation — PDF didn't carry a full script */}
+      {showGenerate && (
+        <div className="rounded-xl border border-[#3b82f6]/25 bg-[#3b82f6]/[0.06] p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-zinc-100">
+            <Wand2 className="h-4 w-4 text-[#60a5fa]" strokeWidth={1.75} />
+            Script not found in PDF — generate one?
+          </div>
+          <p className="mt-1.5 text-[12px] leading-relaxed text-zinc-500">
+            Claude will write a 45–60s beat-by-beat script from your hook,
+            pillar, and demand signal. Every beat stays fully editable.
+          </p>
+          <Button
+            variant="primary"
+            onClick={onGenerate}
+            disabled={generating}
+            className="mt-3"
+          >
+            {generating ? (
+              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+            ) : (
+              <Wand2 className="h-4 w-4" strokeWidth={1.75} />
+            )}
+            {generating ? "Writing script…" : "Generate Script"}
+          </Button>
+        </div>
+      )}
+
+      {showRegenerate && (
+        <div className="flex items-center justify-between">
+          <span className="text-[11px] text-zinc-500">
+            AI-generated<AiTag ai={ai} name="script" />
+          </span>
+          <Button
+            variant="subtle"
+            size="sm"
+            onClick={onGenerate}
+            disabled={generating}
+          >
+            {generating ? (
+              <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+            ) : (
+              <RefreshCw className="h-4 w-4" strokeWidth={1.75} />
+            )}
+            {generating ? "Writing…" : "Regenerate"}
+          </Button>
+        </div>
+      )}
+
       {isEmpty ? (
-        <Button onClick={addBeat} className="w-full">
-          <Plus className="h-4 w-4" strokeWidth={1.75} /> Sketch the script
+        <Button onClick={addBeat} variant="subtle" className="w-full">
+          <Plus className="h-4 w-4" strokeWidth={1.75} /> Sketch the script manually
         </Button>
       ) : (
         <>
@@ -637,9 +754,13 @@ function ScriptSection({
 function CaptionSection({
   item,
   update,
+  ai,
+  openSignal,
 }: {
   item: ContentItem;
   update: (p: Partial<ContentItem>) => void;
+  ai: AiState;
+  openSignal?: number;
 }) {
   const captions = item.captions ?? [];
   const setCaptions = (c: ContentItem["captions"]) => update({ captions: c });
@@ -658,6 +779,7 @@ function CaptionSection({
       defaultOpen={false}
       isEmpty={isEmpty}
       emptyLabel="Optional at idea stage"
+      openSignal={openSignal}
     >
       {isEmpty ? (
         <Button onClick={addCaption} className="w-full">
@@ -665,6 +787,11 @@ function CaptionSection({
         </Button>
       ) : (
         <>
+          {ai.fields.has("captions") && (
+            <div className="text-[11px] text-zinc-500">
+              Variants<AiTag ai={ai} name="captions" />
+            </div>
+          )}
           <div className="space-y-4">
             {captions.map((c, i) => (
               <Card
@@ -738,9 +865,13 @@ function CaptionSection({
 function EngagementSection({
   item,
   update,
+  ai,
+  openSignal,
 }: {
   item: ContentItem;
   update: (p: Partial<ContentItem>) => void;
+  ai: AiState;
+  openSignal?: number;
 }) {
   const e = item.engagement;
   const setEng = (patch: Partial<ContentItem["engagement"]>) =>
@@ -754,9 +885,10 @@ function EngagementSection({
       defaultOpen={false}
       isEmpty={isEmpty}
       emptyLabel="Optional at idea stage"
+      openSignal={openSignal}
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Comment trigger type">
+        <Field label={<>Comment trigger type<AiTag ai={ai} name="triggerType" /></>}>
           <Select
             value={e.triggerType}
             onChange={(ev) =>
@@ -771,7 +903,7 @@ function EngagementSection({
             ))}
           </Select>
         </Field>
-        <Field label="Trigger text">
+        <Field label={<>Trigger text<AiTag ai={ai} name="triggerText" /></>}>
           <Input
             value={e.triggerText}
             onChange={(ev) => setEng({ triggerText: ev.target.value })}
@@ -779,7 +911,7 @@ function EngagementSection({
           />
         </Field>
       </div>
-      <Field label="First comment (pin this)">
+      <Field label={<>First comment (pin this)<AiTag ai={ai} name="firstComment" /></>}>
         <div className="flex items-start gap-2">
           <Textarea
             value={e.firstComment}
@@ -789,7 +921,7 @@ function EngagementSection({
           <CopyBtn text={e.firstComment} />
         </div>
       </Field>
-      <Field label="End-card text">
+      <Field label={<>End-card text<AiTag ai={ai} name="endCard" /></>}>
         <Input
           value={e.endCard}
           onChange={(ev) => setEng({ endCard: ev.target.value })}
@@ -808,12 +940,383 @@ export function IdeaEditor({ initial }: { initial: ContentItem }) {
   const [promoting, setPromoting] = useState(false);
   const { state, schedule } = useAutosave<ContentItem>(apiSaveIdea);
 
+  // Autofill-from-PDF state
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [autofilling, setAutofilling] = useState(false);
+  const [toast, setToast] = useState<{ msg: string; err?: boolean } | null>(null);
+  const [ai, setAi] = useState<AiState>({ fields: new Set(), fade: false });
+  // Per-section "force open" counters — bumped when autofill/script-gen fills
+  // a section so it expands automatically.
+  const [expand, setExpand] = useState<Record<string, number>>({});
+  function bumpExpand(keys: string[]) {
+    setExpand((e) => {
+      const next = { ...e };
+      for (const k of keys) next[k] = (next[k] ?? 0) + 1;
+      return next;
+    });
+  }
+  // AI script generation state
+  const [autofillDone, setAutofillDone] = useState(false);
+  const [scriptGenerated, setScriptGenerated] = useState(false);
+  const [generatingScript, setGeneratingScript] = useState(false);
+  const [completing, setCompleting] = useState(false);
+
   function update(patch: Partial<ContentItem>) {
     setItem((prev) => {
       const next = { ...prev, ...patch };
       schedule(next);
       return next;
     });
+  }
+
+  function showToast(msg: string, err = false) {
+    setToast({ msg, err });
+    setTimeout(() => setToast(null), 4000);
+  }
+
+  // Merge an AI field object (from autofill or AI-complete) into the current
+  // item — only ever populating fields the user hasn't filled, never overwriting.
+  // Returns the patch plus which fields/sections were touched.
+  function mergeFields(f: AutofillFields): {
+    patch: Partial<ContentItem>;
+    filled: Set<string>;
+    sections: Set<string>;
+  } {
+      const patch: Partial<ContentItem> = {};
+      const filled = new Set<string>();
+      const sections = new Set<string>();
+      const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+
+      // Only ever populate fields the user hasn't filled — never overwrite.
+
+      // ---- Section 1: Core ----
+      if (str(f.title) && !item.title.trim()) {
+        patch.title = str(f.title);
+        filled.add("title");
+        sections.add("core");
+      }
+      const pillar = str(f.pillar) as Pillar;
+      // Pillar always has a value; treat the factory default as "unset".
+      if (PILLARS.includes(pillar) && item.pillar === "Claude Code") {
+        patch.pillar = pillar;
+        filled.add("pillar");
+        sections.add("core");
+      }
+      const hookType = str(f.hookType) as HookType;
+      if (HOOK_TYPES.includes(hookType) && !item.hookType) {
+        patch.hookType = hookType;
+        filled.add("hookType");
+        sections.add("core");
+      }
+      // Format — prompt enum uses "B-roll"; map to our "B-roll voiceover".
+      let fmt = str(f.format);
+      if (fmt === "B-roll") fmt = "B-roll voiceover";
+      if (FORMATS.includes(fmt as Format) && item.format === "Talking head") {
+        patch.format = fmt as Format;
+        filled.add("format");
+        sections.add("core");
+      }
+      if (str(f.lengthTarget) && !item.lengthTarget.trim()) {
+        patch.lengthTarget = str(f.lengthTarget);
+        filled.add("lengthTarget");
+        sections.add("core");
+      }
+      // Posting window — prompt enum is coarse ("Evening"/"Late").
+      const pwMap: Record<string, PostingWindow> = {
+        Evening: "Evening (6-8pm)",
+        Late: "Night (9-11pm)",
+      };
+      const pw = pwMap[str(f.postingWindow)];
+      if (pw && !item.postingWindow) {
+        patch.postingWindow = pw;
+        filled.add("postingWindow");
+        sections.add("core");
+      }
+
+      // ---- Section 2: Demand Signal ----
+      const ds = f.demandSignal;
+      const demandPatch: Partial<ContentItem["demandSignal"]> = {};
+      if (ds) {
+        if (str(ds.text) && !item.demandSignal.text.trim()) {
+          demandPatch.text = str(ds.text);
+          filled.add("demandText");
+          sections.add("demand");
+        }
+        if (str(ds.source) && !item.demandSignal.source.trim()) {
+          demandPatch.source = str(ds.source);
+          patch.sourceUrl = str(ds.source);
+          filled.add("sourceUrl");
+          sections.add("demand");
+        }
+        if (str(ds.date) && !item.demandSignal.date.trim()) {
+          demandPatch.date = str(ds.date);
+          filled.add("demandDate");
+          sections.add("demand");
+        }
+      }
+      if (Object.keys(demandPatch).length) {
+        patch.demandSignal = { ...item.demandSignal, ...demandPatch };
+      }
+
+      // ---- Section 3: Hook ----
+      const hk = f.hook;
+      const hookPatch: Partial<ContentItem["hook"]> = {};
+      if (hk) {
+        if (str(hk.line1) && !item.hook.line1.trim()) {
+          hookPatch.line1 = str(hk.line1);
+          filled.add("hookLine1");
+          sections.add("hook");
+        }
+        if (str(hk.line2) && !item.hook.line2.trim()) {
+          hookPatch.line2 = str(hk.line2);
+          filled.add("hookLine2");
+          sections.add("hook");
+        }
+        if (str(hk.firstTwoSeconds) && !item.hook.firstTwoSeconds.trim()) {
+          hookPatch.firstTwoSeconds = str(hk.firstTwoSeconds);
+          filled.add("firstTwoSeconds");
+          sections.add("hook");
+        }
+        // Scorecard — only apply if the user hasn't toggled anything yet.
+        const sc = hk.scorecard;
+        const userTouchedScorecard = Object.values(item.hook.scorecard).some(
+          Boolean
+        );
+        if (sc && !userTouchedScorecard) {
+          const newSc = { ...item.hook.scorecard };
+          let any = false;
+          (
+            ["recognition", "openLoop", "firstTwoS", "specificity", "identity"] as const
+          ).forEach((k) => {
+            if (typeof sc[k] === "boolean") {
+              newSc[k] = sc[k] as boolean;
+              if (sc[k]) any = true;
+            }
+          });
+          if (any) {
+            hookPatch.scorecard = newSc;
+            filled.add("scorecard");
+            sections.add("hook");
+          }
+        }
+      }
+      if (Object.keys(hookPatch).length) {
+        patch.hook = { ...item.hook, ...hookPatch };
+      }
+      // Recognition score — default is 3, treat as "unset" (rendered in Hook).
+      const rec = Number(f.recognitionScore);
+      if (rec >= 1 && rec <= 5 && item.recognitionScore === 3) {
+        patch.recognitionScore = Math.round(rec);
+        filled.add("recognitionScore");
+        sections.add("hook");
+      }
+
+      // ---- Section 4: Script ----
+      const rawBeats = Array.isArray(f.script) ? f.script : [];
+      if (rawBeats.length > 0 && item.script.length === 0) {
+        const mapped: Beat[] = rawBeats
+          .filter((b) => b && (str(b.content) || str(b.timestamp)))
+          .map((b) => ({
+            id: uid("beat"),
+            timestamp: str(b.timestamp) || "0:00",
+            label: (BEAT_LABELS.includes(str(b.label) as BeatLabel)
+              ? str(b.label)
+              : "DEMO") as BeatLabel,
+            content: str(b.content),
+            retentionNote: str(b.retentionNote),
+          }));
+        if (mapped.length) {
+          patch.script = mapped;
+          filled.add("script");
+          sections.add("script");
+        }
+      }
+
+      // ---- Section 5: Captions ----
+      const rawCaps = Array.isArray(f.captions) ? f.captions : [];
+      if (rawCaps.length > 0 && item.captions.length === 0) {
+        const mapped: Caption[] = rawCaps
+          .filter((c) => c && str(c.text))
+          .map((c, i) => ({
+            variant: `Variant ${i + 1}`,
+            text: str(c.text),
+            hashtags: str(c.hashtags),
+            recommended: c.recommended === true,
+          }));
+        if (mapped.length && !mapped.some((c) => c.recommended)) {
+          mapped[0].recommended = true;
+        }
+        if (mapped.length) {
+          patch.captions = mapped;
+          filled.add("captions");
+          sections.add("caption");
+        }
+      }
+
+      // ---- Section 6: Engagement ----
+      const eng = f.engagement;
+      const engPatch: Partial<ContentItem["engagement"]> = {};
+      if (eng) {
+        const tt = str(eng.triggerType) as TriggerType;
+        if (TRIGGER_TYPES.includes(tt) && !item.engagement.triggerType) {
+          engPatch.triggerType = tt;
+          filled.add("triggerType");
+          sections.add("engagement");
+        }
+        if (str(eng.triggerText) && !item.engagement.triggerText.trim()) {
+          engPatch.triggerText = str(eng.triggerText);
+          filled.add("triggerText");
+          sections.add("engagement");
+        }
+        if (str(eng.firstComment) && !item.engagement.firstComment.trim()) {
+          engPatch.firstComment = str(eng.firstComment);
+          filled.add("firstComment");
+          sections.add("engagement");
+        }
+        if (str(eng.endCard) && !item.engagement.endCard.trim()) {
+          engPatch.endCard = str(eng.endCard);
+          filled.add("endCard");
+          sections.add("engagement");
+        }
+      }
+      if (Object.keys(engPatch).length) {
+        patch.engagement = { ...item.engagement, ...engPatch };
+      }
+
+      return { patch, filled, sections };
+  }
+
+  async function handleAutofill(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setAutofilling(true);
+    try {
+      const f = await apiAutofillIdea(file);
+      const { patch, filled, sections } = mergeFields(f);
+
+      // Mark autofill complete — this unlocks the "Generate Script" panel when
+      // the document didn't carry a full script.
+      setAutofillDone(true);
+      // If the doc carried no full script, expand Section 4 so the user sees
+      // the "Generate Script" panel without having to open it.
+      const finalScriptLen = patch.script?.length ?? item.script.length;
+      if (finalScriptLen < 3) sections.add("script");
+      bumpExpand([...sections]);
+
+      if (filled.size === 0) {
+        showToast("Nothing to fill — all matching fields are already set");
+      } else {
+        update(patch);
+        setAi({ fields: filled, fade: false });
+        // Fade the AI tags after ~3s, then clear them.
+        setTimeout(() => setAi((a) => ({ ...a, fade: true })), 3000);
+        setTimeout(() => setAi({ fields: new Set(), fade: false }), 3600);
+        // Count of sections that actually received data (exclude a script-only
+        // expand that was just to reveal the Generate panel).
+        const filledSections = new Set([...sections].filter((s) => s !== "script" || filled.has("script")));
+        showToast(
+          `Filled ${filled.size} field${filled.size === 1 ? "" : "s"} across ${
+            filledSections.size
+          } section${filledSections.size === 1 ? "" : "s"}`
+        );
+      }
+    } catch (err) {
+      showToast(
+        `Autofill failed: ${err instanceof Error ? err.message : "unknown error"}`,
+        true
+      );
+    } finally {
+      setAutofilling(false);
+    }
+  }
+
+  async function handleComplete() {
+    if (completing) return;
+    setCompleting(true);
+    try {
+      const f = await apiCompleteIdea({
+        title: item.title,
+        hookLine1: item.hook.line1,
+        hookLine2: item.hook.line2,
+        firstTwoSeconds: item.hook.firstTwoSeconds,
+        pillar: item.pillar,
+        format: item.format,
+        lengthTarget: item.lengthTarget,
+        demandSignal: item.demandSignal.text,
+      });
+      const { patch, filled, sections } = mergeFields(f);
+      bumpExpand([...sections]);
+      if (filled.size === 0) {
+        showToast("Idea already complete — nothing to fill");
+      } else {
+        update(patch);
+        if (filled.has("script")) setScriptGenerated(true);
+        setAi({ fields: filled, fade: false });
+        setTimeout(() => setAi((a) => ({ ...a, fade: true })), 3000);
+        setTimeout(() => setAi({ fields: new Set(), fade: false }), 3600);
+        showToast(
+          `Completed idea — filled ${filled.size} field${
+            filled.size === 1 ? "" : "s"
+          } across ${sections.size} section${sections.size === 1 ? "" : "s"}`
+        );
+      }
+    } catch (err) {
+      showToast(
+        `AI complete failed: ${err instanceof Error ? err.message : "unknown error"}`,
+        true
+      );
+    } finally {
+      setCompleting(false);
+    }
+  }
+
+  async function handleGenerateScript() {
+    if (generatingScript) return;
+    setGeneratingScript(true);
+    try {
+      const raw = await apiGenerateScript({
+        title: item.title,
+        hookLine1: item.hook.line1,
+        hookLine2: item.hook.line2,
+        firstTwoSeconds: item.hook.firstTwoSeconds,
+        pillar: item.pillar,
+        format: item.format,
+        lengthTarget: item.lengthTarget,
+        demandSignal: item.demandSignal.text,
+      });
+      const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+      const mapped: Beat[] = (raw ?? [])
+        .filter((b) => b && typeof b.content === "string")
+        .map((b) => ({
+          id: uid("beat"),
+          timestamp: str(b.timestamp) || "0:00",
+          label: (BEAT_LABELS.includes(str(b.label) as BeatLabel)
+            ? str(b.label)
+            : "DEMO") as BeatLabel,
+          content: str(b.content),
+          retentionNote: str(b.retentionNote),
+        }));
+      if (!mapped.length) throw new Error("AI returned an empty script");
+      update({ script: mapped });
+      setScriptGenerated(true);
+      setAi({ fields: new Set(["script"]), fade: false });
+      setTimeout(() => setAi((a) => ({ ...a, fade: true })), 3000);
+      setTimeout(() => setAi({ fields: new Set(), fade: false }), 3600);
+      bumpExpand(["script"]);
+      showToast(
+        `Script generated — ${mapped.length} beats. Edit any beat directly.`
+      );
+    } catch (err) {
+      showToast(
+        `Script generation failed: ${
+          err instanceof Error ? err.message : "unknown error"
+        }`,
+        true
+      );
+    } finally {
+      setGeneratingScript(false);
+    }
   }
 
   const readiness = calcReadiness(item);
@@ -841,20 +1344,58 @@ export function IdeaEditor({ initial }: { initial: ContentItem }) {
         <div className="flex items-center justify-between gap-4">
           <Link
             href="/ideas"
-            className="inline-flex items-center gap-1.5 text-sm text-zinc-400 outline-none transition-colors hover:text-white focus-visible:text-white"
+            className="group inline-flex items-center gap-1.5 text-sm text-zinc-400 outline-none transition-colors hover:text-white focus-visible:text-white"
           >
-            <ArrowLeft className="h-4 w-4" strokeWidth={1.75} /> Ideas
+            <ArrowLeft className="h-4 w-4 transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:-translate-x-0.5" strokeWidth={1.75} /> Ideas
           </Link>
-          <SaveIndicator state={state} />
+          <div className="flex items-center gap-3">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.txt,text/plain,application/pdf"
+              className="hidden"
+              onChange={handleAutofill}
+            />
+            <Button
+              variant="subtle"
+              size="sm"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={autofilling}
+            >
+              {autofilling ? (
+                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+              ) : (
+                <Sparkles className="h-4 w-4" strokeWidth={1.75} />
+              )}
+              {autofilling ? "Extracting…" : "Autofill from PDF"}
+            </Button>
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleComplete}
+              disabled={completing}
+            >
+              {completing ? (
+                <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
+              ) : (
+                <Wand2 className="h-4 w-4" strokeWidth={1.75} />
+              )}
+              {completing ? "Completing…" : "Complete with AI"}
+            </Button>
+            <SaveIndicator state={state} />
+          </div>
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          <input
-            value={item.title}
-            onChange={(e) => update({ title: e.target.value })}
-            className="min-w-[240px] flex-1 bg-transparent text-[22px] font-bold tracking-[-0.025em] text-white outline-none placeholder:text-zinc-600"
-            placeholder="Untitled Idea"
-          />
+          <div className="flex min-w-[240px] flex-1 items-center">
+            <input
+              value={item.title}
+              onChange={(e) => update({ title: e.target.value })}
+              className="min-w-0 flex-1 bg-transparent text-[22px] font-bold tracking-[-0.025em] text-white outline-none placeholder:text-zinc-600"
+              placeholder="Untitled Idea"
+            />
+            <AiTag ai={ai} name="title" />
+          </div>
           <PillarBadge pillar={item.pillar} />
         </div>
 
@@ -889,18 +1430,61 @@ export function IdeaEditor({ initial }: { initial: ContentItem }) {
       </header>
 
       {/* Content */}
-      <div className="mx-auto max-w-3xl animate-fade-in space-y-4 px-7 py-7">
-        <CoreSection item={item} update={update} />
-        <DemandSection item={item} update={update} />
-        <HookSection item={item} update={update} />
-        <ScriptSection item={item} update={update} />
-        <CaptionSection item={item} update={update} />
-        <EngagementSection item={item} update={update} />
+      <div className="mx-auto max-w-3xl space-y-4 px-7 py-7">
+        {[
+          <CoreSection key="core" item={item} update={update} ai={ai} openSignal={expand.core} />,
+          <DemandSection key="demand" item={item} update={update} ai={ai} openSignal={expand.demand} />,
+          <HookSection key="hook" item={item} update={update} ai={ai} openSignal={expand.hook} />,
+          <ScriptSection
+            key="script"
+            item={item}
+            update={update}
+            ai={ai}
+            openSignal={expand.script}
+            generating={generatingScript}
+            showGenerate={(item.script?.length ?? 0) < 3}
+            showRegenerate={scriptGenerated && (item.script?.length ?? 0) >= 3}
+            onGenerate={handleGenerateScript}
+          />,
+          <CaptionSection key="caption" item={item} update={update} ai={ai} openSignal={expand.caption} />,
+          <EngagementSection key="engagement" item={item} update={update} ai={ai} openSignal={expand.engagement} />,
+          <LinkedReelSection key="linked" item={item} update={update} />,
+        ].map((node, i) => (
+          <div
+            key={i}
+            className="animate-fade-in-up"
+            style={{ animationDelay: `${i * 60}ms` }}
+          >
+            {node}
+          </div>
+        ))}
 
-        <div className="rounded-xl border border-white/[0.04] bg-white/[0.02] px-5 py-4 text-xs text-zinc-600">
+        <div className="animate-fade-in-up rounded-xl border border-white/[0.04] bg-white/[0.02] px-5 py-4 text-xs text-zinc-600 [animation-delay:420ms]">
           Created {new Date(item.createdAt).toLocaleString()} · Last saved{" "}
           {new Date(item.updatedAt).toLocaleString()}
         </div>
+      </div>
+
+      {/* Autofill toast */}
+      <div
+        className={cn(
+          "fixed bottom-6 left-1/2 z-50 -translate-x-1/2 transition-[opacity,transform] duration-300",
+          toast ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0 pointer-events-none"
+        )}
+      >
+        {toast && (
+          <div
+            className={cn(
+              "flex items-center gap-2 rounded-2xl border px-4 py-3 shadow-[0_8px_32px_-4px_rgba(0,0,0,0.7)] backdrop-blur-xl",
+              toast.err
+                ? "border-rose-500/20 bg-rose-500/10 text-rose-200"
+                : "border-[#3b82f6]/20 bg-[rgba(15,23,36,0.88)] text-zinc-100"
+            )}
+          >
+            <Sparkles className="h-4 w-4 text-[#60a5fa]" strokeWidth={1.75} />
+            <span className="text-sm">{toast.msg}</span>
+          </div>
+        )}
       </div>
     </>
   );
