@@ -8,12 +8,17 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
-  useDraggable,
   useDroppable,
   closestCorners,
   type DragStartEvent,
   type DragEndEvent,
 } from "@dnd-kit/core";
+import {
+  SortableContext,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 import { Plus, RotateCcw, X } from "lucide-react";
 import { Video, Status, STATUSES, STATUS_LABELS, STATUS_COLORS } from "@/lib/types";
 import { VideoCard } from "@/components/VideoCard";
@@ -30,11 +35,19 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-function DraggableCard({ video, onDelete }: { video: Video; onDelete: (id: string) => void }) {
-  const { attributes, listeners, setNodeRef, isDragging, setActivatorNodeRef } =
-    useDraggable({ id: video.id });
+function SortableCard({ video, onDelete }: { video: Video; onDelete: (id: string) => void }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    setActivatorNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: video.id });
+  const style = { transform: CSS.Translate.toString(transform), transition };
   return (
-    <div ref={setNodeRef} className={cn(isDragging && "opacity-40")}>
+    <div ref={setNodeRef} style={style} className={cn(isDragging && "opacity-40")}>
       <VideoCard
         video={video}
         dragHandle={{ ref: setActivatorNodeRef, ...listeners, ...attributes }}
@@ -88,15 +101,17 @@ function Column({
           isOver && "border-accent/40 bg-accent/[0.06]"
         )}
       >
-        {shown.map((v, i) => (
-          <div
-            key={v.id}
-            className="animate-fade-in"
-            style={{ animationDelay: `${index * 70 + i * 35}ms` }}
-          >
-            <DraggableCard video={v} onDelete={onDelete} />
-          </div>
-        ))}
+        <SortableContext items={shown.map((v) => v.id)} strategy={verticalListSortingStrategy}>
+          {shown.map((v, i) => (
+            <div
+              key={v.id}
+              className="animate-fade-in"
+              style={{ animationDelay: `${index * 70 + i * 35}ms` }}
+            >
+              <SortableCard video={v} onDelete={onDelete} />
+            </div>
+          ))}
+        </SortableContext>
 
         {videos.length === 0 && (
           <div className="grid place-items-center py-3 text-[11px] text-zinc-600">
@@ -182,6 +197,7 @@ export function BoardClient({ initialVideos }: { initialVideos: Video[] }) {
       ANALYZED: [],
     };
     for (const v of videos) map[v.status].push(v);
+    for (const s of STATUSES) map[s].sort((a, b) => a.priority - b.priority);
     return map;
   }, [videos]);
 
@@ -197,18 +213,53 @@ export function BoardClient({ initialVideos }: { initialVideos: Video[] }) {
     const { active, over } = e;
     if (!over) return;
     const id = String(active.id);
-    const newStatus = String(over.id) as Status;
-    if (!STATUSES.includes(newStatus)) return;
+    const overId = String(over.id);
     const current = videos.find((v) => v.id === id);
-    if (!current || current.status === newStatus) return;
+    if (!current) return;
 
+    // `over` is either a column (status) when dropped on empty space, or a card.
+    const overCard = videos.find((v) => v.id === overId);
+    const newStatus: Status = overCard
+      ? overCard.status
+      : (overId as Status);
+    if (!STATUSES.includes(newStatus)) return;
+
+    // Target column ordered by priority, excluding the dragged card.
+    const column = byStatus[newStatus].filter((v) => v.id !== id);
+    const index =
+      overCard && overCard.id !== id
+        ? column.findIndex((v) => v.id === overCard.id)
+        : column.length;
+    const insertAt = index < 0 ? column.length : index;
+
+    // Bail out if nothing actually moved.
+    const oldOrder = byStatus[newStatus].map((v) => v.id).join();
+    const next = [...column];
+    next.splice(insertAt, 0, current);
+    if (current.status === newStatus && next.map((v) => v.id).join() === oldOrder) {
+      return;
+    }
+
+    // New fractional priority = midpoint between the neighbors at the drop slot.
+    const before = column[insertAt - 1];
+    const after = column[insertAt];
+    let priority: number;
+    if (!before && !after) priority = Date.now();
+    else if (!before) priority = after.priority - 1;
+    else if (!after) priority = before.priority + 1;
+    else priority = (before.priority + after.priority) / 2;
+
+    const statusChanged = current.status !== newStatus;
     const updated: Video = {
       ...current,
       status: newStatus,
-      statusHistory: [
-        ...current.statusHistory,
-        { status: newStatus, timestamp: new Date().toISOString() },
-      ],
+      priority,
+      statusHistory: statusChanged
+        ? [
+            ...current.statusHistory,
+            { status: newStatus, timestamp: new Date().toISOString() },
+          ]
+        : current.statusHistory,
     };
     setVideos((prev) => prev.map((v) => (v.id === id ? updated : v)));
     mute();
@@ -221,7 +272,7 @@ export function BoardClient({ initialVideos }: { initialVideos: Video[] }) {
     }
 
     // Dropped into Analyzed with no results yet → prompt to add them
-    if (newStatus === "ANALYZED" && isResultsEmpty(updated)) {
+    if (statusChanged && newStatus === "ANALYZED" && isResultsEmpty(updated)) {
       const go = window.confirm(
         "This reel has no results yet.\n\nAdd results now?"
       );

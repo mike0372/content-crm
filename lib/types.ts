@@ -209,6 +209,9 @@ export interface ContentItem {
   // metrics flow back from the Instagram cache. null = not linked.
   instagramMediaId: string | null;
   statusHistory: StatusEvent[];
+  // Board ordering within a status column — lower sorts higher (top = priority).
+  // Defaults to the createdAt epoch so existing order is preserved.
+  priority: number;
   createdAt: string;
   updatedAt: string;
 }

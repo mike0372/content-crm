@@ -48,6 +48,7 @@ type ContentRow = {
   part_number: number | null;
   instagram_media_id: string | null;
   status_history: ContentItem["statusHistory"];
+  priority: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -78,6 +79,7 @@ function rowToItem(r: ContentRow): ContentItem {
     partNumber: r.part_number,
     instagramMediaId: r.instagram_media_id ?? null,
     statusHistory: r.status_history ?? [],
+    priority: r.priority ?? Date.parse(r.created_at),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -109,6 +111,7 @@ function itemToRow(i: ContentItem): ContentRow {
     part_number: i.partNumber,
     instagram_media_id: i.instagramMediaId ?? null,
     status_history: i.statusHistory,
+    priority: i.priority ?? Date.parse(i.createdAt),
     created_at: i.createdAt,
     updated_at: i.updatedAt,
   };

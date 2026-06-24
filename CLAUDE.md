@@ -18,13 +18,13 @@
 | `/login` | Password sign-in (no chrome; sets the session cookie) |
 
 ### Auth
-- **`middleware.ts`** gates every page + API route. **Opt-in:** when `AUTH_SECRET` is unset the app stays fully open (local dev). Once `AUTH_SECRET` + `APP_PASSWORD` are set, all routes require the `ap_session` httpOnly cookie — except `/login`, `/api/auth/*`, and cron calls bearing the right `x-cron-secret`.
+- **`proxy.ts`** (Next 16 renamed `middleware.ts` → `proxy.ts`; exports an async `proxy` fn) gates every page + API route. **Opt-in:** when `AUTH_SECRET` is unset the app stays fully open (local dev). Once `AUTH_SECRET` + `APP_PASSWORD` are set, all routes require the `ap_session` httpOnly cookie — except `/login`, `/api/auth/*`, and cron calls bearing the right `x-cron-secret`.
 - `POST /api/auth/login` — constant-time password check vs `APP_PASSWORD`; on success sets `ap_session` = `AUTH_SECRET` (httpOnly, sameSite=lax, secure in prod, 30-day). `POST /api/auth/logout` clears it. Sidebar has a "Sign out" button; `SidebarLayout` renders `/login` without the sidebar/agent chrome.
 
 ### Data layer
 - **Supabase (Postgres)** is the source of truth — project ref `ygqexrticqsjhrnrwlxu`. The local `/data/*.json` files are legacy seed/backup only; the app no longer reads or writes them.
 - Tables (schema in Supabase migrations `init_content_crm_schema`):
-  - `content_items` — unified ContentItem store (`stage` = "idea" | "production"); scalar columns + JSONB for nested fields (`hook`, `script`, `captions`, `engagement`, `checklist`, `results`, `demand_signal`, `status_history`). `updated_at` auto-set by trigger. `instagram_media_id` (text, nullable) binds an item to its posted reel so live IG metrics flow back into the editor (see Linked Reel below).
+  - `content_items` — unified ContentItem store (`stage` = "idea" | "production"); scalar columns + JSONB for nested fields (`hook`, `script`, `captions`, `engagement`, `checklist`, `results`, `demand_signal`, `status_history`). `updated_at` auto-set by trigger. `instagram_media_id` (text, nullable) binds an item to its posted reel so live IG metrics flow back into the editor (see Linked Reel below). `priority` (double precision) is the board's intra-column sort key — **lower sorts higher** (top of column); defaults to the createdAt epoch so legacy order is preserved. Board drag reorders within a column (and across columns) by writing a fractional midpoint priority to the dragged card only.
   - `calendars` — one row per ISO week (`week` PK, `days` JSONB)
   - `performance_log` — upserted/deleted from `content_items` when status → ANALYZED
   - `instagram_account` + `instagram_posts` — full Meta Graph API data (account stats + every fetched post field incl. insights). `instagram_posts.avg_watch_time` (numeric, seconds) holds the `ig_reels_avg_watch_time` reels insight, fetched in a **separate** Graph call so a failure can't zero the core metrics. Stale posts (outside the latest media window) are pruned on each sync.
@@ -50,9 +50,9 @@
 - `CRON_SECRET` — optional; required in the `x-cron-secret` header for cron sync calls (bypasses the auth gate)
 
 ### Auth gate (single-key login)
-- **What:** one access key gates the entire app (every page + every `/api/*` route) via `middleware.ts`. Enter the key at `/login`; valid → a signed session cookie is set; idle 3h → disconnected.
+- **What:** one access key gates the entire app (every page + every `/api/*` route) via `proxy.ts`. Enter the key at `/login`; valid → a signed session cookie is set; idle 3h → disconnected.
 - `lib/auth.ts` — Edge+Node-safe (Web Crypto only) core: `signSession`/`verifySession` (HMAC-SHA256 token carrying an `exp`), `safeEqual` (constant-time), `SESSION_COOKIE`, `SESSION_TTL_MS` (3h).
-- `middleware.ts` — verifies the signed cookie, **slides** the 3h window (re-mints when >5min old), 401s APIs / redirects pages to `/login` with a same-origin-only `?next=`. Cron header bypass. Unset `AUTH_SECRET` ⇒ app open (dev fallback).
+- `proxy.ts` — verifies the signed cookie, **slides** the 3h window (re-mints when >5min old), 401s APIs / redirects pages to `/login` with a same-origin-only `?next=`. Cron header bypass. Unset `AUTH_SECRET` ⇒ app open (dev fallback).
 - `app/api/auth/login` — constant-time key check, in-memory IP rate-limit (8 tries / 10min → 429), mints the 3h cookie (`httpOnly`, `secure` in prod, `sameSite=lax`). `app/api/auth/logout` — clears it.
 - Cookie is a signed token, never the raw secret/key; the key never reaches the client bundle. Rotate access by changing `APP_ACCESS_KEY`; invalidate all sessions by changing `AUTH_SECRET`.
 
