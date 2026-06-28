@@ -15,11 +15,6 @@
 | `/video/[id]` | Video detail / editor |
 | `/ideas` | Ideas bank |
 | `/performance` | Instagram performance (raw API cache + charts) |
-| `/login` | Password sign-in (no chrome; sets the session cookie) |
-
-### Auth
-- **`proxy.ts`** (Next 16 renamed `middleware.ts` → `proxy.ts`; exports an async `proxy` fn) gates every page + API route. **Opt-in:** when `AUTH_SECRET` is unset the app stays fully open (local dev). Once `AUTH_SECRET` + `APP_PASSWORD` are set, all routes require the `ap_session` httpOnly cookie — except `/login`, `/api/auth/*`, and cron calls bearing the right `x-cron-secret`.
-- `POST /api/auth/login` — constant-time password check vs `APP_PASSWORD`; on success sets `ap_session` = `AUTH_SECRET` (httpOnly, sameSite=lax, secure in prod, 30-day). `POST /api/auth/logout` clears it. Sidebar has a "Sign out" button; `SidebarLayout` renders `/login` without the sidebar/agent chrome.
 
 ### Data layer
 - **Supabase (Postgres)** is the source of truth — project ref `ygqexrticqsjhrnrwlxu`. The local `/data/*.json` files are legacy seed/backup only; the app no longer reads or writes them.
@@ -45,16 +40,6 @@
 - `INSTAGRAM_ACCESS_TOKEN` — Facebook Graph API token
 - `INSTAGRAM_BUSINESS_ACCOUNT_ID` — IG Business account ID
 - `ANTHROPIC_API_KEY` — for the AI Agent panel
-- `APP_ACCESS_KEY` — the access key typed on `/login` (legacy alias `APP_PASSWORD` still accepted). Auth is OFF until this + `AUTH_SECRET` are both set
-- `AUTH_SECRET` — 256-bit random string used to HMAC-sign session cookies (NOT the value stored in the cookie). Setting it turns auth ON for the whole app, local and Vercel
-- `CRON_SECRET` — optional; required in the `x-cron-secret` header for cron sync calls (bypasses the auth gate)
-
-### Auth gate (single-key login)
-- **What:** one access key gates the entire app (every page + every `/api/*` route) via `proxy.ts`. Enter the key at `/login`; valid → a signed session cookie is set; idle 3h → disconnected.
-- `lib/auth.ts` — Edge+Node-safe (Web Crypto only) core: `signSession`/`verifySession` (HMAC-SHA256 token carrying an `exp`), `safeEqual` (constant-time), `SESSION_COOKIE`, `SESSION_TTL_MS` (3h).
-- `proxy.ts` — verifies the signed cookie, **slides** the 3h window (re-mints when >5min old), 401s APIs / redirects pages to `/login` with a same-origin-only `?next=`. Cron header bypass. Unset `AUTH_SECRET` ⇒ app open (dev fallback).
-- `app/api/auth/login` — constant-time key check, in-memory IP rate-limit (8 tries / 10min → 429), mints the 3h cookie (`httpOnly`, `secure` in prod, `sameSite=lax`). `app/api/auth/logout` — clears it.
-- Cookie is a signed token, never the raw secret/key; the key never reaches the client bundle. Rotate access by changing `APP_ACCESS_KEY`; invalidate all sessions by changing `AUTH_SECRET`.
 
 ---
 
@@ -185,3 +170,4 @@ Lucide React · `strokeWidth: 1.75` · size 22–28 (features), 13 (inline) · i
 - If a reference image is provided: match layout, spacing, typography, and color exactly. Swap in placeholder content where needed.
 - Do not improve or add to the reference design.
 - Screenshot at `http://localhost:3000` using the browser or a screenshot tool. Compare against reference. Fix mismatches. Do at least 2 rounds.
+

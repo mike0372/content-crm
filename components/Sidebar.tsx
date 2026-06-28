@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   CalendarDays,
@@ -13,7 +13,6 @@ import {
   Sparkles,
   Home,
   HelpCircle,
-  LogOut,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { SaveButton } from "@/components/SaveButton";
@@ -38,13 +37,6 @@ export function Sidebar({
   onToggleAgent?: () => void;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
-
-  async function logout() {
-    await fetch("/api/auth/logout", { method: "POST" });
-    router.replace("/login");
-    router.refresh();
-  }
 
   return (
     <aside
@@ -207,25 +199,6 @@ export function Sidebar({
             Help
           </span>
         </Link>
-        <button
-          onClick={logout}
-          title="Sign out"
-          className={cn(
-            "group relative flex w-full items-center rounded-[9px] py-2 text-sm font-medium outline-none transition-colors duration-150 text-zinc-400 hover:bg-[#ef4444]/10 hover:text-[#ef4444] focus-visible:ring-2 focus-visible:ring-[#ef4444]/40",
-            collapsed ? "justify-center px-0" : "gap-3 px-3"
-          )}
-        >
-          <LogOut
-            className="h-[18px] w-[18px] shrink-0 text-zinc-500 transition-colors group-hover:text-[#ef4444]"
-            strokeWidth={1.75}
-          />
-          <span
-            className="flex-1 overflow-hidden whitespace-nowrap text-left transition-[opacity,max-width] duration-200"
-            style={{ opacity: collapsed ? 0 : 1, maxWidth: collapsed ? 0 : 200 }}
-          >
-            Sign out
-          </span>
-        </button>
       </div>
 
       {/* Bottom card */}
