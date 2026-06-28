@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowLeft,
@@ -18,7 +19,10 @@ import {
   Download,
   Sparkles,
   PencilLine,
+  ScrollText,
+  Undo2,
 } from "lucide-react";
+import { FilmingScriptModal } from "@/components/ideas/FilmingScriptModal";
 import {
   Video,
   Results,
@@ -72,12 +76,28 @@ function wordCount(s: string) {
 }
 
 export function VideoEditor({ initial, initialTab }: { initial: Video; initialTab?: string }) {
+  const router = useRouter();
   const [video, setVideo] = useState<Video>(initial);
   const [tab, setTab] = useState<Tab>(() => {
     const want = initialTab?.toUpperCase();
     return want && (TABS as readonly string[]).includes(want) ? (want as Tab) : "META";
   });
   const { state, schedule } = useAutosave<Video>(apiSaveVideo);
+  const [scriptOpen, setScriptOpen] = useState(false);
+  const [retireConfirm, setRetireConfirm] = useState(false);
+  const [retiring, setRetiring] = useState(false);
+
+  async function handleRetire() {
+    if (!retireConfirm) { setRetireConfirm(true); return; }
+    setRetiring(true);
+    try {
+      await apiSaveVideo({ ...video, stage: "idea" });
+      router.push("/ideas");
+    } finally {
+      setRetiring(false);
+      setRetireConfirm(false);
+    }
+  }
 
   function update(patch: Partial<Video> | ((v: Video) => Video)) {
     setVideo((prev) => {
@@ -97,7 +117,37 @@ export function VideoEditor({ initial, initialTab }: { initial: Video; initialTa
           >
             <ArrowLeft className="h-4 w-4 transition-transform duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] group-hover:-translate-x-0.5" strokeWidth={1.75} /> Board
           </Link>
-          <SaveIndicator state={state} />
+          <div className="flex items-center gap-3">
+            <Button variant="subtle" size="sm" onClick={() => setScriptOpen(true)}>
+              <ScrollText className="h-4 w-4" strokeWidth={1.75} />
+              Filming Script
+            </Button>
+            {retireConfirm ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-amber-400">Retire to ideas?</span>
+                <Button
+                  variant="subtle"
+                  size="sm"
+                  onClick={handleRetire}
+                  disabled={retiring}
+                >
+                  {retiring ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} /> : "Yes, retire"}
+                </Button>
+                <button
+                  onClick={() => setRetireConfirm(false)}
+                  className="rounded-md p-1.5 text-zinc-500 outline-none transition-colors hover:text-zinc-300 focus-visible:ring-2 focus-visible:ring-white/20"
+                >
+                  <X className="h-3.5 w-3.5" strokeWidth={2} />
+                </button>
+              </div>
+            ) : (
+              <Button variant="subtle" size="sm" onClick={handleRetire}>
+                <Undo2 className="h-4 w-4" strokeWidth={1.75} />
+                Retire to ideas
+              </Button>
+            )}
+            <SaveIndicator state={state} />
+          </div>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
           <input
@@ -138,6 +188,10 @@ export function VideoEditor({ initial, initialTab }: { initial: Video; initialTa
         {tab === "CHECKLIST" && <ChecklistTab video={video} update={update} />}
         {tab === "RESULTS" && <ResultsTab video={video} update={update} />}
       </div>
+
+      {scriptOpen && (
+        <FilmingScriptModal item={video} onClose={() => setScriptOpen(false)} />
+      )}
     </>
   );
 }
