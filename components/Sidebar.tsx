@@ -161,7 +161,7 @@ export function Sidebar({
               className="flex-1 overflow-hidden whitespace-nowrap text-left transition-[opacity,max-width] duration-200"
               style={{ opacity: collapsed ? 0 : 1, maxWidth: collapsed ? 0 : 200 }}
             >
-              AI Agent
+              Edward
             </span>
           </button>
         </div>
