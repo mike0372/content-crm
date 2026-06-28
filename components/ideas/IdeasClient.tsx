@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useMemo } from "react";
+import { useRef, useState, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
@@ -10,10 +10,14 @@ import {
   Trash2,
   FileUp,
   ArrowUpRight,
-  ChevronDown,
+  Sparkles,
 } from "lucide-react";
 import {
   ContentItem,
+  ContentType,
+  CONTENT_TYPES,
+  CONTENT_TYPE_LABELS,
+  CONTENT_TYPE_COLORS,
   PILLARS,
   Pillar,
   calcReadiness,
@@ -32,6 +36,7 @@ import {
   apiImportIdeas,
   apiGetIdeas,
 } from "@/lib/api";
+import { BrainstormModal } from "./BrainstormModal";
 import { cn } from "@/lib/utils";
 
 // ---- Mini readiness bar -----------------------------------------------------
@@ -113,6 +118,8 @@ function IdeaCard({
 }) {
   const readiness = calcReadiness(idea);
   const hookPreview = idea.hook?.line1 || "";
+  const ct = idea.contentType ?? "reel_long";
+  const { bg, text } = CONTENT_TYPE_COLORS[ct];
 
   return (
     <div className="hover-lift group relative rounded-xl border border-white/[0.06] bg-surface shadow-[0_1px_3px_rgba(0,0,0,0.4)] hover:border-white/[0.12]">
@@ -122,7 +129,12 @@ function IdeaCard({
       >
         {/* Top row */}
         <div className="flex items-center justify-between gap-2">
-          <PillarBadge pillar={idea.pillar} />
+          <div className="flex items-center gap-1.5">
+            <PillarBadge pillar={idea.pillar} />
+            <span className={cn("rounded-full px-2 py-0.5 text-[10px] font-semibold", bg, text)}>
+              {CONTENT_TYPE_LABELS[ct]}
+            </span>
+          </div>
           <div className="flex items-center gap-1.5">
             {idea.demandSignal?.date && (
               <FreshnessDot dateStr={idea.demandSignal.date} />
@@ -196,13 +208,16 @@ export function IdeasClient({ initialIdeas }: { initialIdeas: ContentItem[] }) {
   const [sortKey, setSortKey] = useState<SortKey>("readiness");
   const [pillarFilter, setPillarFilter] = useState<Pillar | "all">("all");
   const [readinessFilter, setReadinessFilter] = useState<ReadinessFilter>("all");
+  const [contentTypeFilter, setContentTypeFilter] = useState<ContentType | "all">("reel_long");
+  const [showBrainstorm, setShowBrainstorm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { message: toast, show: showToast } = useToast();
 
-  // Live sync: ideas are the same rows everywhere, so poll the server and keep
-  // this list in step with edits made on the editor page or other devices.
+  const handleCloseBrainstorm = useCallback(() => setShowBrainstorm(false), []);
+
+  // Live sync
   const { status, mute } = useLiveSync<ContentItem[]>(apiGetIdeas, (server) => {
-    if (deletingId) return; // don't resurrect a row mid-delete
+    if (deletingId) return;
     setIdeas(server);
   });
 
@@ -256,6 +271,10 @@ export function IdeasClient({ initialIdeas }: { initialIdeas: ContentItem[] }) {
   const displayed = useMemo(() => {
     let list = ideas.slice();
 
+    if (contentTypeFilter !== "all") {
+      list = list.filter((i) => (i.contentType ?? "reel_long") === contentTypeFilter);
+    }
+
     if (pillarFilter !== "all") {
       list = list.filter((i) => i.pillar === pillarFilter);
     }
@@ -280,7 +299,7 @@ export function IdeasClient({ initialIdeas }: { initialIdeas: ContentItem[] }) {
     });
 
     return list;
-  }, [ideas, sortKey, pillarFilter, readinessFilter]);
+  }, [ideas, sortKey, pillarFilter, readinessFilter, contentTypeFilter]);
 
   const readyCount = ideas.filter((i) => calcReadiness(i) >= 80).length;
 
@@ -311,6 +330,10 @@ export function IdeasClient({ initialIdeas }: { initialIdeas: ContentItem[] }) {
           )}
           {importing ? "Importing…" : "Import PDF"}
         </Button>
+        <Button variant="ghost" onClick={() => setShowBrainstorm(true)}>
+          <Sparkles className="h-4 w-4" strokeWidth={1.75} />
+          Brainstorm
+        </Button>
         <Button variant="primary" onClick={handleNewIdea} disabled={creating}>
           {creating ? (
             <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} />
@@ -334,8 +357,41 @@ export function IdeasClient({ initialIdeas }: { initialIdeas: ContentItem[] }) {
         </div>
       )}
 
+      {/* Content type filter pills */}
+      <div className="flex flex-wrap gap-1.5 px-7 pt-5">
+        <button
+          onClick={() => setContentTypeFilter("all")}
+          className={cn(
+            "rounded-full px-3 py-1 text-[11px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/40",
+            contentTypeFilter === "all"
+              ? "bg-white/[0.10] text-zinc-200 ring-1 ring-inset ring-white/[0.15]"
+              : "bg-white/[0.04] text-zinc-500 hover:bg-white/[0.08] hover:text-zinc-300"
+          )}
+        >
+          All
+        </button>
+        {CONTENT_TYPES.map((ct) => {
+          const { bg, text } = CONTENT_TYPE_COLORS[ct];
+          const active = contentTypeFilter === ct;
+          return (
+            <button
+              key={ct}
+              onClick={() => setContentTypeFilter(ct)}
+              className={cn(
+                "rounded-full px-3 py-1 text-[11px] font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-accent/40",
+                active
+                  ? `${bg} ${text} ring-1 ring-inset ring-current/30`
+                  : "bg-white/[0.04] text-zinc-500 hover:bg-white/[0.08] hover:text-zinc-300"
+              )}
+            >
+              {CONTENT_TYPE_LABELS[ct]}
+            </button>
+          );
+        })}
+      </div>
+
       {/* Sort + filter toolbar */}
-      <div className="flex flex-wrap items-center gap-2 px-7 pb-2 pt-5">
+      <div className="flex flex-wrap items-center gap-2 px-7 pb-2 pt-3">
         {/* Sort dropdown */}
         <div className="relative">
           <select
@@ -450,6 +506,8 @@ export function IdeasClient({ initialIdeas }: { initialIdeas: ContentItem[] }) {
       </div>
 
       <Toast message={toast} />
+
+      {showBrainstorm && <BrainstormModal onClose={handleCloseBrainstorm} />}
     </>
   );
 }

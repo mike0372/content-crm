@@ -1,5 +1,30 @@
 // Domain types for the Content Calendar CRM
 
+export const CONTENT_TYPES = [
+  "reel_short",
+  "reel_long",
+  "post",
+  "carousel",
+  "informative",
+] as const;
+export type ContentType = (typeof CONTENT_TYPES)[number];
+
+export const CONTENT_TYPE_LABELS: Record<ContentType, string> = {
+  reel_short: "Reel Short",
+  reel_long: "Reel Long",
+  post: "Post",
+  carousel: "Carousel",
+  informative: "Informative",
+};
+
+export const CONTENT_TYPE_COLORS: Record<ContentType, { bg: string; text: string }> = {
+  reel_short: { bg: "bg-cyan-500/15", text: "text-cyan-300" },
+  reel_long:  { bg: "bg-[#3b82f6]/15", text: "text-[#60a5fa]" },
+  post:       { bg: "bg-emerald-500/15", text: "text-emerald-300" },
+  carousel:   { bg: "bg-amber-500/15", text: "text-amber-300" },
+  informative:{ bg: "bg-violet-500/15", text: "text-violet-300" },
+};
+
 export const STATUSES = [
   "TO_SHOOT",
   "SHOT",
@@ -182,6 +207,7 @@ export interface ContentItem {
   // core
   title: string;
   pillar: Pillar;
+  contentType: ContentType;
   hookType: HookType | "";
   format: Format;
   lengthTarget: string;

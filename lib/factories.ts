@@ -1,5 +1,6 @@
 import {
   ContentItem,
+  ContentType,
   Pillar,
   Status,
   Format,
@@ -71,6 +72,7 @@ export interface NewVideoInput {
   title?: string;
   pillar?: Pillar;
   format?: Format;
+  contentType?: ContentType;
   lengthTarget?: string;
   postingWindow?: PostingWindow;
   scheduledTime?: string;
@@ -90,6 +92,7 @@ export function createVideo(input: NewVideoInput = {}): ContentItem {
     status,
     title: input.title ?? "Untitled Reel",
     pillar: input.pillar ?? "Claude Code",
+    contentType: input.contentType ?? "reel_long",
     hookType: "",
     format: input.format ?? "Screen recording",
     lengthTarget: input.lengthTarget ?? "30s",
@@ -145,6 +148,7 @@ export function createVideo(input: NewVideoInput = {}): ContentItem {
 export interface NewIdeaInput {
   title?: string;
   pillar?: Pillar;
+  contentType?: ContentType;
   hookLine1?: string;
   sourceUrl?: string;
   recognitionScore?: number;
@@ -159,6 +163,7 @@ export function createIdeaItem(input: NewIdeaInput = {}): ContentItem {
     status: "TO_SHOOT",
     title: input.title ?? "",
     pillar: input.pillar ?? "Claude Code",
+    contentType: input.contentType ?? "reel_long",
     hookType: "",
     format: "Talking head",
     lengthTarget: "",

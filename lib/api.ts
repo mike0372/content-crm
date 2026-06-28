@@ -92,9 +92,10 @@ export async function apiSaveIdeas(
   );
 }
 
-// Create a new blank idea
+// Create a new blank idea. Accepts Partial<ContentItem> plus factory-level
+// shorthand fields (hookLine1, contentType) that are resolved server-side.
 export async function apiCreateIdea(
-  partial?: Partial<ContentItem>
+  partial?: Partial<ContentItem> & { hookLine1?: string }
 ): Promise<ContentItem> {
   return j<ContentItem>(
     await fetch(`/api/ideas`, {
@@ -303,6 +304,46 @@ export async function apiRefreshInstagram(): Promise<unknown> {
     await fetch("/api/sync", { method: "POST" })
   );
   return res.instagram;
+}
+
+// ---- Brainstorm -------------------------------------------------------------
+
+export interface BrainstormedIdea {
+  title: string;
+  notes: string;
+  hookLine1: string;
+  pillar: string;
+  contentType: string;
+}
+
+export async function apiBrainstormIdeas(body: {
+  seedIdea: string;
+  contentType: string;
+  count: number;
+}): Promise<BrainstormedIdea[]> {
+  const { ideas } = await j<{ ideas: BrainstormedIdea[] }>(
+    await fetch("/api/ideas/brainstorm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    })
+  );
+  return ideas;
+}
+
+export async function apiRegenerateOne(body: {
+  seedIdea: string;
+  contentType: string;
+  excludeTitles: string[];
+}): Promise<BrainstormedIdea> {
+  const { idea } = await j<{ idea: BrainstormedIdea }>(
+    await fetch("/api/ideas/brainstorm", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...body, count: 1, single: true }),
+    })
+  );
+  return idea;
 }
 
 // ---- Results lesson ---------------------------------------------------------

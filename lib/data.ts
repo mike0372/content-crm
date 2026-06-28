@@ -29,6 +29,7 @@ type ContentRow = {
   status: ContentItem["status"];
   title: string;
   pillar: ContentItem["pillar"];
+  content_type: ContentItem["contentType"] | null;
   hook_type: ContentItem["hookType"];
   format: ContentItem["format"];
   length_target: string;
@@ -60,6 +61,7 @@ function rowToItem(r: ContentRow): ContentItem {
     status: r.status,
     title: r.title,
     pillar: r.pillar,
+    contentType: r.content_type ?? "reel_long",
     hookType: r.hook_type,
     format: r.format,
     lengthTarget: r.length_target,
@@ -92,6 +94,7 @@ function itemToRow(i: ContentItem): ContentRow {
     status: i.status,
     title: i.title,
     pillar: i.pillar,
+    content_type: i.contentType ?? "reel_long",
     hook_type: i.hookType,
     format: i.format,
     length_target: i.lengthTarget,
