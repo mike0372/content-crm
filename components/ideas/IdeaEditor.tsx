@@ -1331,12 +1331,15 @@ export function IdeaEditor({ initial }: { initial: ContentItem }) {
     try {
       const res = await apiPromoteIdea(item.id);
       const day = res.day ? res.day.toUpperCase() : null;
-      // Navigate to the video editor — same item ID, now production stage
       router.push(
         `/video/${item.id}${day ? `?promoted=${day}` : ""}`
       );
-    } catch {
+    } catch (err) {
       setPromoting(false);
+      showToast(
+        `Failed to promote: ${err instanceof Error ? err.message : "unknown error"}`,
+        true
+      );
     }
   }
 

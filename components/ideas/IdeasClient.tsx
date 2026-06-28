@@ -208,7 +208,7 @@ export function IdeasClient({ initialIdeas }: { initialIdeas: ContentItem[] }) {
   const [sortKey, setSortKey] = useState<SortKey>("readiness");
   const [pillarFilter, setPillarFilter] = useState<Pillar | "all">("all");
   const [readinessFilter, setReadinessFilter] = useState<ReadinessFilter>("all");
-  const [contentTypeFilter, setContentTypeFilter] = useState<ContentType | "all">("reel_long");
+  const [contentTypeFilter, setContentTypeFilter] = useState<ContentType | "all">("all");
   const [showBrainstorm, setShowBrainstorm] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { message: toast, show: showToast } = useToast();

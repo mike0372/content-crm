@@ -19,6 +19,7 @@ export function useAutosave<T>(
   saveRef.current = save;
 
   const run = useCallback(async () => {
+    timer.current = null; // mark timer as no longer pending so cleanup doesn't double-fire
     if (latest.current === null) return;
     const value = latest.current;
     setState("saving");
