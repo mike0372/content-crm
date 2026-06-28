@@ -21,6 +21,7 @@ import {
   Sparkles,
   Wand2,
   RefreshCw,
+  ScrollText,
 } from "lucide-react";
 import {
   ContentItem,
@@ -68,6 +69,7 @@ import {
 import { uid } from "@/lib/factories";
 import { cn } from "@/lib/utils";
 import { LinkedReelSection } from "@/components/ideas/LinkedReelSection";
+import { FilmingScriptModal } from "@/components/ideas/FilmingScriptModal";
 
 // ---- AI autofill tag --------------------------------------------------------
 // Briefly marks a field the autofill just populated, then fades out.
@@ -960,6 +962,7 @@ export function IdeaEditor({ initial }: { initial: ContentItem }) {
   const [scriptGenerated, setScriptGenerated] = useState(false);
   const [generatingScript, setGeneratingScript] = useState(false);
   const [completing, setCompleting] = useState(false);
+  const [scriptOpen, setScriptOpen] = useState(false);
 
   function update(patch: Partial<ContentItem>) {
     setItem((prev) => {
@@ -1359,6 +1362,14 @@ export function IdeaEditor({ initial }: { initial: ContentItem }) {
             <Button
               variant="subtle"
               size="sm"
+              onClick={() => setScriptOpen(true)}
+            >
+              <ScrollText className="h-4 w-4" strokeWidth={1.75} />
+              Filming Script
+            </Button>
+            <Button
+              variant="subtle"
+              size="sm"
               onClick={() => fileInputRef.current?.click()}
               disabled={autofilling}
             >
@@ -1486,6 +1497,10 @@ export function IdeaEditor({ initial }: { initial: ContentItem }) {
           </div>
         )}
       </div>
+      {/* Filming script modal */}
+      {scriptOpen && (
+        <FilmingScriptModal item={item} onClose={() => setScriptOpen(false)} />
+      )}
     </>
   );
 }
