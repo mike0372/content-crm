@@ -1326,7 +1326,7 @@ export function IdeaEditor({ initial }: { initial: ContentItem }) {
   const isReady = readiness >= 80;
 
   async function handlePromote() {
-    if (!isReady || promoting) return;
+    if (promoting) return;
     setPromoting(true);
     try {
       const res = await apiPromoteIdea(item.id);
@@ -1422,7 +1422,7 @@ export function IdeaEditor({ initial }: { initial: ContentItem }) {
             <Button
               variant="primary"
               onClick={handlePromote}
-              disabled={!isReady || promoting}
+              disabled={promoting}
             >
               {promoting ? (
                 <Loader2
@@ -1436,7 +1436,7 @@ export function IdeaEditor({ initial }: { initial: ContentItem }) {
             </Button>
             {!isReady && (
               <div className="pointer-events-none absolute right-0 top-full z-10 mt-2 w-52 rounded-lg border border-white/10 bg-zinc-900 px-3 py-2 text-xs text-zinc-300 opacity-0 transition-opacity group-hover:opacity-100">
-                Reach 80% readiness to promote
+                Idea isn&apos;t fully ready — promote anyway?
               </div>
             )}
           </div>
