@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import type Anthropic from "@anthropic-ai/sdk";
+import { createMessage } from "@/lib/ai";
 import { getAllVideos, getCalendar, getIdeas, getPerformanceLog } from "@/lib/data";
 import { getInstagramCache } from "@/lib/instagram";
 
@@ -118,13 +119,14 @@ export async function POST(req: NextRequest) {
 
     const systemPrompt = buildSystemPrompt(videos, calendar, ideas, performance, instagram);
 
-    const client = new Anthropic({ apiKey });
-    const response = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 2048,
-      system: systemPrompt,
-      messages: messages as Anthropic.MessageParam[],
-    });
+    const response = await createMessage(
+      {
+        max_tokens: 2048,
+        system: systemPrompt,
+        messages: messages as Anthropic.MessageParam[],
+      },
+      { route: "agent", tier: "fast" }
+    );
 
     raw = response.content[0].type === "text" ? response.content[0].text : "";
   } catch (err) {

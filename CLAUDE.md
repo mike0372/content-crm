@@ -15,6 +15,7 @@
 | `/video/[id]` | Video detail / editor |
 | `/ideas` | Ideas bank |
 | `/performance` | Instagram performance (raw API cache + charts) |
+| `/login` | Single-user password gate (only enforced when `APP_PASSWORD` + `AUTH_SECRET` are set) |
 
 ### Data layer
 - **Supabase (Postgres)** is the source of truth — project ref `ygqexrticqsjhrnrwlxu`. The local `/data/*.json` files are legacy seed/backup only; the app no longer reads or writes them.
@@ -22,6 +23,7 @@
   - `content_items` — unified ContentItem store (`stage` = "idea" | "production"); scalar columns + JSONB for nested fields (`hook`, `script`, `captions`, `engagement`, `checklist`, `results`, `demand_signal`, `status_history`). `updated_at` auto-set by trigger. `instagram_media_id` (text, nullable) binds an item to its posted reel so live IG metrics flow back into the editor (see Linked Reel below). `priority` (double precision) is the board's intra-column sort key — **lower sorts higher** (top of column); defaults to the createdAt epoch so legacy order is preserved. Board drag reorders within a column (and across columns) by writing a fractional midpoint priority to the dragged card only.
   - `calendars` — one row per ISO week (`week` PK, `days` JSONB)
   - `performance_log` — upserted/deleted from `content_items` when status → ANALYZED
+  - `app_config` — key/value JSONB (holds the rotatable Instagram long-lived token); `ai_usage` — one row per Claude call (route, model, tokens, est. cost) for the dashboard cost panel + monthly budget cap. Migration: `supabase/migrations/20260630_add_app_config_and_ai_usage.sql` — run manually; the app degrades gracefully (token falls back to env, cost panel shows zero) until applied.
   - `instagram_account` + `instagram_posts` — full Meta Graph API data (account stats + every fetched post field incl. insights). `instagram_posts.avg_watch_time` (numeric, seconds) holds the `ig_reels_avg_watch_time` reels insight, fetched in a **separate** Graph call so a failure can't zero the core metrics. Stale posts (outside the latest media window) are pruned on each sync.
 - **Sync = full save to Supabase.** Every in-app "Sync" button → `apiRefreshInstagram()` → **POST `/api/sync`** → `lib/sync.ts` `syncAll()`, which (1) fetches live Meta/Graph data and upserts `instagram_account` + `instagram_posts`, and (2) reconciles the website's own CRM data — counts videos/ideas and rebuilds `performance_log` from current `content_items` via `rebuildPerformanceLog()`. Content rows are also written on every edit; the sync guarantees the whole picture is in Supabase, never in a local file. Returns `{ instagram, counts, calendarWeek, syncedAt }`. Also usable as a Vercel Cron target (optional `CRON_SECRET` header). The old `/api/instagram` (POST) still works for an IG-only sync; `/api/instagram/sync` (POST) also runs an IG-only sync and returns the full cache (used by the Linked Reel "Refresh" button).
 - **In-editor idea features** (`components/ideas/`): the Idea editor has (1) **Autofill from PDF/TXT** — `POST /api/ideas/autofill` runs Claude Haiku on one document and returns parsed fields; the editor merges only fields the user left empty and flashes a transient "AI" tag. Distinct from `/api/ideas/import` (bulk extract + save on the list page). (2) **Linked Reel** (`LinkedReelSection.tsx`) — picks a reel from the IG cache (`GET /api/instagram`), stores `instagramMediaId`, shows live read-only metrics, and "Pull into Results" writes IG values into `results{}` + sets status → ANALYZED. Board cards show a chain badge when `instagramMediaId` is set.
@@ -29,17 +31,26 @@
 - RLS is **enabled with no policies** on every table — access is server-side only via the service_role key (which bypasses RLS). Never use the anon key for these tables from the browser.
 - `lib/supabase.ts` — `getSupabase()` lazy server-only client (service_role).
 - `lib/data.ts` — central data access (`getAllContent`, `getAllVideos`, `getIdeas`, `getCalendar`, `saveContentItem`, …). Maps DB rows ↔ `ContentItem`. Public signatures unchanged from the old JSON layer.
-- `lib/instagram.ts` — Graph API sync (`getInstagramCache`, `syncInstagram`) reads/writes the IG tables.
+- `lib/instagram.ts` — Graph API sync (`getInstagramCache`, `syncInstagram`) reads/writes the IG tables. `syncInstagram` reads the active token via `lib/instagramToken.ts` and throws a typed `INSTAGRAM_TOKEN_INVALID` on Meta error code 190 / HTTP 401.
+- `lib/instagramToken.ts` — Instagram long-lived token lifecycle: `getActiveToken` (DB-stored token in `app_config`, falls back to env), `refreshInstagramToken` (Graph `fb_exchange_token` exchange — needs `META_APP_ID`/`META_APP_SECRET`), `getTokenHealth` (days-remaining + status for the dashboard chip). The daily cron (`/api/instagram/sync` GET) auto-refreshes when <10 days remain.
+- `lib/ai.ts` — central Claude config + the single choke point for every AI call. `MODELS` (override via `ANTHROPIC_MODEL_FAST`/`ANTHROPIC_MODEL_SMART`), `createMessage(params, {route, tier})` (selects the model, enforces optional `AI_MONTHLY_USD_BUDGET`, logs tokens+est. cost to `ai_usage`), `getMonthlyAiUsage()` for the cost panel. **All AI routes call through this — never instantiate the Anthropic SDK directly in a route.**
+- `lib/auth.ts` + `proxy.ts` — single-user auth gate (Next 16 `proxy` convention). Edge-safe HMAC session cookie; the gate activates only when `APP_PASSWORD` + `AUTH_SECRET` are both set, redirecting unauthenticated page loads to `/login` and returning 401 on `/api/*` (the cron GET self-authenticates via `CRON_SECRET`). Login: `/login` page → `POST /api/login`.
 - `scripts/migrate-to-supabase.mjs` — one-time importer: local `/data/*.json` → Supabase (`node scripts/migrate-to-supabase.mjs`).
 - **Live sync (polling, server-only)** — Board, Calendar, and Ideas stay in step across tabs/devices via `lib/useLiveSync.ts` (`useLiveSync(fetcher, onData, {intervalMs})`): re-fetches the existing server API on an 8s interval + on window focus/visibility, never touching the DB from the browser (RLS posture unchanged). `mute(ms)` suppresses applying fetched data after a local write so optimistic DnD/autosave is never clobbered; status drives `LiveIndicator`/`ConnectionBar` (`components/ui/LiveIndicator.tsx`) — green "Live" dot when synced, amber bar when reconnecting. Optimistic DnD reverts on save failure and shows `components/ui/Toast.tsx` ("Sync failed — retrying"). Client getters `apiGetVideos`/`apiGetIdeas`/`apiGetCalendar` (no-store) feed the polling.
 
-### Environment variables (`.env.local`)
+### Environment variables (`.env.local` — see `.env.example`)
 - `SUPABASE_URL` — Supabase project URL
 - `SUPABASE_SERVICE_ROLE_KEY` — service_role key (server-only data access; bypasses RLS — never expose)
 - `NEXT_PUBLIC_SUPABASE_URL` / `NEXT_PUBLIC_SUPABASE_ANON_KEY` — present for any future browser client (unused server-side)
-- `INSTAGRAM_ACCESS_TOKEN` — Facebook Graph API token
+- `INSTAGRAM_ACCESS_TOKEN` — Graph API token (bootstrap/fallback; the live token is stored in `app_config` once refreshed)
 - `INSTAGRAM_BUSINESS_ACCOUNT_ID` — IG Business account ID
-- `ANTHROPIC_API_KEY` — for the AI Agent panel
+- `INSTAGRAM_TOKEN_EXPIRES` — optional `YYYY-MM-DD` fallback expiry for the token-health readout
+- `META_APP_ID` / `META_APP_SECRET` — required for automatic Instagram token refresh
+- `ANTHROPIC_API_KEY` — for all AI features
+- `ANTHROPIC_MODEL_FAST` / `ANTHROPIC_MODEL_SMART` — optional model-ID overrides (defaults in `lib/ai.ts`)
+- `AI_MONTHLY_USD_BUDGET` — optional monthly AI spend cap (USD); blank = no cap
+- `APP_PASSWORD` / `AUTH_SECRET` — single-user auth gate (both required to enable it; gate is OFF until set)
+- `CRON_SECRET` — set in production to lock the daily IG-sync cron endpoint
 
 ---
 

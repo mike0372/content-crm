@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { createMessage } from "@/lib/ai";
 import { getIdeas } from "@/lib/data";
 import { getInstagramCache } from "@/lib/instagram";
 import { CONTENT_TYPE_LABELS, ContentType } from "@/lib/types";
@@ -91,14 +91,14 @@ export async function POST(req: NextRequest) {
     .replace("{existingIdeas}", existingTitles.length > 0 ? existingTitles.map((t) => `- ${t}`).join("\n") : "(none)")
     .replace("{count}", String(single ? 1 : Math.min(Math.max(count, 1), 5)));
 
-  const client = new Anthropic({ apiKey });
-
   try {
-    const msg = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 2048,
-      messages: [{ role: "user", content: prompt }],
-    });
+    const msg = await createMessage(
+      {
+        max_tokens: 2048,
+        messages: [{ role: "user", content: prompt }],
+      },
+      { route: "ideas.brainstorm", tier: "fast" }
+    );
 
     const text = msg.content[0]?.type === "text" ? msg.content[0].text : "";
     const raw = text.match(/\[[\s\S]*\]/)?.[0] ?? text;

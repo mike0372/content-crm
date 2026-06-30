@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { createMessage } from "@/lib/ai";
 
 export const dynamic = "force-dynamic";
 
@@ -74,15 +74,12 @@ export async function POST(req: NextRequest) {
     .replace("{lengthTarget}", fill(ctx.lengthTarget))
     .replace("{demandSignal}", fill(ctx.demandSignal));
 
-  const client = new Anthropic({ apiKey });
-
   let responseText: string;
   try {
-    const msg = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 4096,
-      messages: [{ role: "user", content: prompt }],
-    });
+    const msg = await createMessage(
+      { max_tokens: 4096, messages: [{ role: "user", content: prompt }] },
+      { route: "ideas.generate-script", tier: "smart" }
+    );
     const block = msg.content[0];
     responseText = block.type === "text" ? block.text : "";
   } catch (err) {

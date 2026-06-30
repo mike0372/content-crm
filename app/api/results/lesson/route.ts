@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { createMessage } from "@/lib/ai";
 
 export const dynamic = "force-dynamic";
 
@@ -30,19 +30,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "No metrics provided" }, { status: 400 });
   }
 
-  const client = new Anthropic({ apiKey });
-
   try {
-    const msg = await client.messages.create({
-      model: "claude-haiku-4-5-20251001",
-      max_tokens: 100,
-      messages: [
-        {
-          role: "user",
-          content: PROMPT.replace("{metrics}", JSON.stringify(metrics)),
-        },
-      ],
-    });
+    const msg = await createMessage(
+      {
+        max_tokens: 100,
+        messages: [
+          {
+            role: "user",
+            content: PROMPT.replace("{metrics}", JSON.stringify(metrics)),
+          },
+        ],
+      },
+      { route: "results.lesson", tier: "fast" }
+    );
     const block = msg.content[0];
     const lesson = block.type === "text" ? block.text.trim() : "";
     return NextResponse.json({ lesson });

@@ -3,6 +3,8 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import { RefreshCw, Film } from "lucide-react";
 import type { InstagramCache } from "@/lib/instagram";
+import type { TokenHealth } from "@/lib/instagramToken";
+import type { AiUsageSummary } from "@/lib/ai";
 import type { ContentItem, CalendarWeek } from "@/lib/types";
 import { Button } from "@/components/ui/controls";
 import { cn } from "@/lib/utils";
@@ -11,15 +13,49 @@ import { IGEmptyState, InstagramSection } from "./InstagramSection";
 import { PipelineSection, IdeaBankSection } from "./PipelineSections";
 import { ThisWeekSection, NextActionsSection } from "./WeekAndActions";
 import { ConsistencySection } from "./ConsistencySection";
+import { AiUsageSection } from "./AiUsageSection";
 
 export interface DashboardProps {
   igCache: InstagramCache | null;
   videos: ContentItem[];
   ideas: ContentItem[];
   calWeek: CalendarWeek;
+  tokenHealth: TokenHealth;
+  aiUsage: AiUsageSummary;
 }
 
-export function DashboardClient({ igCache: initialIgCache, videos, ideas, calWeek }: DashboardProps) {
+function TokenChip({ health }: { health: TokenHealth }) {
+  if (health.daysRemaining === null) return null;
+  const tone =
+    health.status === "expired"
+      ? "text-rose-300 bg-rose-500/10 ring-rose-500/30"
+      : health.status === "warn"
+        ? "text-amber-300 bg-amber-500/10 ring-amber-500/30"
+        : "text-emerald-300/90 bg-emerald-500/10 ring-emerald-500/25";
+  const label = health.status === "expired" ? "IG token expired" : `IG token: ${health.daysRemaining}d`;
+  const title =
+    (health.expiresAt ? `Expires ${new Date(health.expiresAt).toLocaleDateString()}. ` : "") +
+    (health.canAutoRefresh
+      ? "Auto-refreshes before expiry."
+      : "Set META_APP_ID + META_APP_SECRET to auto-refresh.");
+  return (
+    <span
+      title={title}
+      className={cn("rounded-full px-2.5 py-1 text-[11px] font-medium ring-1 ring-inset", tone)}
+    >
+      {label}
+    </span>
+  );
+}
+
+export function DashboardClient({
+  igCache: initialIgCache,
+  videos,
+  ideas,
+  calWeek,
+  tokenHealth,
+  aiUsage,
+}: DashboardProps) {
   const [igCache, setIgCache] = useState(initialIgCache);
   const [syncing, setSyncing] = useState(false);
   const [syncError, setSyncError] = useState<string | null>(null);
@@ -66,6 +102,7 @@ export function DashboardClient({ igCache: initialIgCache, videos, ideas, calWee
           <p className="mt-0.5 text-[13px] text-zinc-500">{todayLabel()}</p>
         </div>
         <div className="flex animate-fade-in-down items-center gap-3 [animation-delay:80ms]">
+          <TokenChip health={tokenHealth} />
           {igCache?.lastSync && (
             <span className="text-xs text-zinc-500">
               Synced {minsAgo(igCache.lastSync)}
@@ -160,6 +197,17 @@ export function DashboardClient({ igCache: initialIgCache, videos, ideas, calWee
             </h2>
           </div>
           <ConsistencySection videos={videos} />
+        </section>
+
+        <section className="animate-fade-in-up [animation-delay:320ms]">
+          <div className="mb-3">
+            <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
+              AI Usage
+            </h2>
+          </div>
+          <div className="max-w-md">
+            <AiUsageSection usage={aiUsage} />
+          </div>
         </section>
       </div>
     </div>

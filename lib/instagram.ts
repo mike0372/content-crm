@@ -1,5 +1,6 @@
 import "server-only";
 import { getSupabase } from "./supabase";
+import { getActiveToken } from "./instagramToken";
 
 export interface InstagramPost {
   id: string;
@@ -142,15 +143,31 @@ async function fetchInsights(
 // ---- Sync Graph API -> Supabase --------------------------------------------
 
 export async function syncInstagram(): Promise<InstagramCache> {
-  const token = process.env.INSTAGRAM_ACCESS_TOKEN;
+  const active = await getActiveToken();
   const accountId = process.env.INSTAGRAM_BUSINESS_ACCOUNT_ID;
-  if (!token || !accountId) throw new Error("Instagram credentials not configured");
+  if (!active?.token || !accountId) throw new Error("Instagram credentials not configured");
+  const token = active.token;
 
   // Account info
   const accountRes = await fetch(
     `${BASE}/${accountId}?fields=id,name,username,followers_count,media_count&access_token=${token}`
   );
-  if (!accountRes.ok) throw new Error(`Instagram account fetch failed: ${accountRes.status}`);
+  if (!accountRes.ok) {
+    // Meta error code 190 = token expired/revoked. Surface a typed message so
+    // the UI can prompt a reconnect instead of a generic failure.
+    let code: number | undefined;
+    try {
+      code = ((await accountRes.json()) as { error?: { code?: number } }).error?.code;
+    } catch {
+      /* ignore parse error */
+    }
+    if (accountRes.status === 401 || code === 190) {
+      throw new Error(
+        "INSTAGRAM_TOKEN_INVALID: Instagram token expired or revoked — reconnect Instagram."
+      );
+    }
+    throw new Error(`Instagram account fetch failed: ${accountRes.status}`);
+  }
   const account = (await accountRes.json()) as {
     id: string; name: string; username: string;
     followers_count: number; media_count: number;

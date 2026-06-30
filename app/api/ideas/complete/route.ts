@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { createMessage } from "@/lib/ai";
 
 export const dynamic = "force-dynamic";
 
@@ -93,14 +93,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const client = new Anthropic({ apiKey });
-
   async function ask(prompt: string): Promise<string> {
-    const msg = await client.messages.create({
-      model: "claude-sonnet-4-6",
-      max_tokens: 4096,
-      messages: [{ role: "user", content: prompt }],
-    });
+    const msg = await createMessage(
+      { max_tokens: 4096, messages: [{ role: "user", content: prompt }] },
+      { route: "ideas.complete", tier: "smart" }
+    );
     const block = msg.content[0];
     return block.type === "text" ? block.text : "";
   }

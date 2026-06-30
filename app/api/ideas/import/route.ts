@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import { createMessage } from "@/lib/ai";
 import { saveContentItem } from "@/lib/data";
 import {
   ContentItem,
@@ -181,47 +181,49 @@ export async function POST(req: NextRequest) {
     file.type === "application/pdf" ||
     file.name.toLowerCase().endsWith(".pdf");
 
-  const client = new Anthropic({ apiKey });
-
   let responseText: string;
   try {
     if (isPdf) {
-      const msg = await client.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 16000,
-        system: SYSTEM,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "document",
-                source: {
-                  type: "base64",
-                  media_type: "application/pdf",
-                  data: buffer.toString("base64"),
+      const msg = await createMessage(
+        {
+          max_tokens: 16000,
+          system: SYSTEM,
+          messages: [
+            {
+              role: "user",
+              content: [
+                {
+                  type: "document",
+                  source: {
+                    type: "base64",
+                    media_type: "application/pdf",
+                    data: buffer.toString("base64"),
+                  },
                 },
-              },
-              { type: "text", text: EXTRACTION_PROMPT },
-            ],
-          },
-        ],
-      });
+                { type: "text", text: EXTRACTION_PROMPT },
+              ],
+            },
+          ],
+        },
+        { route: "ideas.import", tier: "smart" }
+      );
       const block = msg.content[0];
       responseText = block.type === "text" ? block.text : "";
     } else {
       const text = buffer.toString("utf8");
-      const msg = await client.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 16000,
-        system: SYSTEM,
-        messages: [
-          {
-            role: "user",
-            content: `${EXTRACTION_PROMPT}\n\n---\n\n${text}`,
-          },
-        ],
-      });
+      const msg = await createMessage(
+        {
+          max_tokens: 16000,
+          system: SYSTEM,
+          messages: [
+            {
+              role: "user",
+              content: `${EXTRACTION_PROMPT}\n\n---\n\n${text}`,
+            },
+          ],
+        },
+        { route: "ideas.import", tier: "smart" }
+      );
       const block = msg.content[0];
       responseText = block.type === "text" ? block.text : "";
     }
