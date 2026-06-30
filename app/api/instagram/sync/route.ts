@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { syncInstagram } from "@/lib/instagram";
 import { getTokenHealth, refreshInstagramToken } from "@/lib/instagramToken";
+import { writeBackup } from "@/lib/export";
 
 export const dynamic = "force-dynamic";
 
@@ -31,6 +32,7 @@ export async function GET(req: NextRequest) {
     }
 
     const cache = await syncInstagram();
+    await writeBackup(); // best-effort daily snapshot
     return NextResponse.json({ ok: true, posts: cache.posts.length, lastSync: cache.lastSync });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

@@ -14,6 +14,7 @@ import { PipelineSection, IdeaBankSection } from "./PipelineSections";
 import { ThisWeekSection, NextActionsSection } from "./WeekAndActions";
 import { ConsistencySection } from "./ConsistencySection";
 import { AiUsageSection } from "./AiUsageSection";
+import { DataCard } from "./DataCard";
 
 export interface DashboardProps {
   igCache: InstagramCache | null;
@@ -199,16 +200,25 @@ export function DashboardClient({
           <ConsistencySection videos={videos} />
         </section>
 
-        <section className="animate-fade-in-up [animation-delay:320ms]">
-          <div className="mb-3">
-            <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
-              AI Usage
-            </h2>
-          </div>
-          <div className="max-w-md">
+        <div className="grid animate-fade-in-up grid-cols-1 gap-4 [animation-delay:320ms] lg:grid-cols-2">
+          <section>
+            <div className="mb-3">
+              <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
+                AI Usage
+              </h2>
+            </div>
             <AiUsageSection usage={aiUsage} />
-          </div>
-        </section>
+          </section>
+
+          <section>
+            <div className="mb-3">
+              <h2 className="text-xs font-bold uppercase tracking-[0.18em] text-zinc-500">
+                Backup
+              </h2>
+            </div>
+            <DataCard />
+          </section>
+        </div>
       </div>
     </div>
   );
