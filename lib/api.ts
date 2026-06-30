@@ -13,14 +13,34 @@ export async function apiGetVideos(): Promise<ContentItem[]> {
   return j<ContentItem[]>(await fetch("/api/videos", { cache: "no-store" }));
 }
 
-export async function apiSaveVideo(item: ContentItem): Promise<ContentItem> {
-  return j<ContentItem>(
-    await fetch(`/api/videos/${item.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(item),
-    })
-  );
+// Thrown by apiSaveVideo when the server rejects a write because the row
+// changed on another device since the version the caller based its edit on.
+export class ConflictError extends Error {
+  constructor(public current: ContentItem) {
+    super("conflict");
+    this.name = "ConflictError";
+  }
+}
+
+// `expectedUpdatedAt` opts into optimistic-concurrency checking — the board
+// passes the version it last saw so a stale cross-device write is rejected (409)
+// instead of silently clobbering. Callers that omit it (e.g. editor autosave)
+// keep last-write-wins behaviour unchanged.
+export async function apiSaveVideo(
+  item: ContentItem,
+  expectedUpdatedAt?: string
+): Promise<ContentItem> {
+  const body = expectedUpdatedAt ? { ...item, expectedUpdatedAt } : item;
+  const res = await fetch(`/api/videos/${item.id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 409) {
+    const data = (await res.json().catch(() => ({}))) as { current?: ContentItem };
+    throw new ConflictError(data.current as ContentItem);
+  }
+  return j<ContentItem>(res);
 }
 
 export async function apiCreateVideo(

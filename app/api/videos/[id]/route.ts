@@ -19,9 +19,21 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const incoming = (await req.json()) as ContentItem;
+  const incoming = (await req.json()) as ContentItem & { expectedUpdatedAt?: string };
   const existing = await getContentItem(id);
   if (!existing) return NextResponse.json({ error: "not found" }, { status: 404 });
+
+  // Opt-in optimistic concurrency: when the caller tells us which version it
+  // based its edit on and the stored row has since moved on, reject so the
+  // client can reconcile instead of silently overwriting another device.
+  if (
+    incoming.expectedUpdatedAt &&
+    existing.updatedAt &&
+    existing.updatedAt !== incoming.expectedUpdatedAt
+  ) {
+    return NextResponse.json({ error: "conflict", current: existing }, { status: 409 });
+  }
+  delete incoming.expectedUpdatedAt;
 
   // append status history on status change
   if (incoming.status && incoming.status !== existing.status) {

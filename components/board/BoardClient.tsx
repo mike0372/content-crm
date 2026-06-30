@@ -32,6 +32,7 @@ import {
   apiCreateVideo,
   apiDeleteVideo,
   apiGetVideos,
+  ConflictError,
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -243,8 +244,25 @@ export function BoardClient({ initialVideos }: { initialVideos: Video[] }) {
     // New fractional priority = midpoint between the neighbors at the drop slot.
     const before = column[insertAt - 1];
     const after = column[insertAt];
+
+    // When repeated reorders between the same neighbors shrink the gap to float
+    // precision, the midpoint stops separating cards. Detect that and re-space
+    // the whole target column to clean integers (persisting every card whose
+    // priority changed). Rare, self-healing — ordering never gets stuck.
+    const EPS = 1e-6;
+    const SPACING = 1000;
     let priority: number;
-    if (!before && !after) priority = Date.now();
+    let extraUpdates: Video[] = [];
+
+    if (before && after && after.priority - before.priority < EPS) {
+      const spaced = next.map((v, i) => ({ ...v, priority: (i + 1) * SPACING }));
+      priority = spaced.find((v) => v.id === id)!.priority;
+      extraUpdates = spaced.filter((v) => {
+        if (v.id === id) return false;
+        const orig = videos.find((o) => o.id === v.id);
+        return !!orig && orig.priority !== v.priority;
+      });
+    } else if (!before && !after) priority = Date.now();
     else if (!before) priority = after.priority - 1;
     else if (!after) priority = before.priority + 1;
     else priority = (before.priority + after.priority) / 2;
@@ -261,13 +279,36 @@ export function BoardClient({ initialVideos }: { initialVideos: Video[] }) {
           ]
         : current.statusHistory,
     };
-    setVideos((prev) => prev.map((v) => (v.id === id ? updated : v)));
+
+    const changed = [updated, ...extraUpdates];
+    setVideos((prev) => prev.map((v) => changed.find((c) => c.id === v.id) ?? v));
     mute();
     try {
-      await apiSaveVideo(updated);
-    } catch {
-      setVideos((prev) => prev.map((v) => (v.id === id ? current : v)));
-      showToast("Sync failed — retrying");
+      // Guard only the dragged card against cross-device conflicts; refresh the
+      // saved versions back into state so a quick second drag isn't a false
+      // conflict against our own previous write.
+      const results = await Promise.all(
+        changed.map((c) => apiSaveVideo(c, c.id === id ? current.updatedAt : undefined))
+      );
+      setVideos((prev) =>
+        prev.map((v) => {
+          const saved = results.find((r) => r.id === v.id);
+          return saved ? { ...v, updatedAt: saved.updatedAt } : v;
+        })
+      );
+    } catch (err) {
+      // Revert every card we optimistically changed back to its pre-drag value.
+      setVideos((prev) =>
+        prev.map((v) => {
+          const orig = videos.find((o) => o.id === v.id);
+          return changed.some((c) => c.id === v.id) && orig ? orig : v;
+        })
+      );
+      showToast(
+        err instanceof ConflictError
+          ? "Card changed on another device — refreshed"
+          : "Sync failed — retrying"
+      );
       return;
     }
 
