@@ -143,13 +143,28 @@ export async function getContentItem(id: string): Promise<ContentItem | null> {
 
 export async function saveContentItem(item: ContentItem): Promise<ContentItem> {
   item.updatedAt = new Date().toISOString();
-  const { data, error } = await getSupabase()
+  const row = itemToRow(item);
+  let result = await getSupabase()
     .from("content_items")
-    .upsert(itemToRow(item), { onConflict: "id" })
+    .upsert(row, { onConflict: "id" })
     .select("*")
     .single();
-  if (error) throw new Error(`saveContentItem: ${error.message}`);
-  const saved = rowToItem(data as ContentRow);
+
+  // If the upsert failed because content_type column hasn't been migrated yet,
+  // retry without it. Apply the migration in the Supabase SQL editor to fix permanently:
+  // ALTER TABLE content_items ADD COLUMN IF NOT EXISTS content_type text NOT NULL DEFAULT 'reel_long'
+  //   CHECK (content_type IN ('reel_short','reel_long','post','carousel','informative'));
+  if (result.error?.message?.includes("content_type")) {
+    const { content_type: _ct, ...rowWithout } = row;
+    result = await getSupabase()
+      .from("content_items")
+      .upsert(rowWithout, { onConflict: "id" })
+      .select("*")
+      .single();
+  }
+
+  if (result.error) throw new Error(`saveContentItem: ${result.error.message}`);
+  const saved = rowToItem(result.data as ContentRow);
   if (saved.stage === "production") {
     await syncPerformanceRow(saved);
   }

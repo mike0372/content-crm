@@ -10,7 +10,13 @@ export async function GET() {
     .select("id, title, created_at, updated_at, message_count")
     .order("updated_at", { ascending: false });
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  // Table may not exist yet — return empty list rather than crashing the UI
+  if (error) {
+    if (error.message?.includes("agent_conversations") || error.code === "42P01") {
+      return NextResponse.json([]);
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json(data ?? []);
 }
 
@@ -27,6 +33,14 @@ export async function POST(req: NextRequest) {
     .select("id")
     .single();
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    if (error.message?.includes("agent_conversations") || error.code === "42P01") {
+      return NextResponse.json(
+        { error: "Conversation history not yet set up — run scripts/add-edward-conversations.sql in Supabase" },
+        { status: 503 }
+      );
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json({ id: data.id });
 }
