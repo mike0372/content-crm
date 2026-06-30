@@ -106,6 +106,110 @@ export default function HelpPage() {
       />
 
       <div className="mx-auto max-w-4xl space-y-14 px-7 py-8">
+        {/* Start here */}
+        <section>
+          <Eyebrow>Start here</Eyebrow>
+          <SectionTitle>Setting yourself up in a day</SectionTitle>
+          <p className="mt-3 text-[14px] leading-relaxed text-zinc-400">
+            You built the app — now the work is putting your actual content operation inside it.
+            Nothing is pre-filled; the CRM is a blank canvas until you feed it. Here&apos;s
+            the order that makes sense.
+          </p>
+
+          <div className="mt-7 space-y-6">
+            <div>
+              <p className="text-[13px] font-semibold text-zinc-200">Start in the Ideas bank</p>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-zinc-400">
+                Go to <strong className="text-zinc-200">/ideas</strong> and dump everything
+                you&apos;ve been meaning to make — even half-formed concepts. If you have notes
+                in a PDF or TXT, use the import button and the AI will extract ideas automatically.
+                Don&apos;t worry about scoring yet; just get them in.
+              </p>
+            </div>
+
+            <div>
+              <p className="text-[13px] font-semibold text-zinc-200">Score until you have 2–3 ready ones</p>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-zinc-400">
+                Open each idea and fill in the hook fields, a demand signal, and a recognition score.
+                The readiness bar turns green at 80+. You don&apos;t need everything there — just your
+                strongest 2 or 3, enough to fill the current week.
+              </p>
+            </div>
+
+            <div>
+              <p className="text-[13px] font-semibold text-zinc-200">Promote your top ideas to the board</p>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-zinc-400">
+                Hit <strong className="text-zinc-200">Promote to Board</strong> on anything ready to
+                shoot. The item flips to production and appears immediately in the To&nbsp;Shoot column
+                on the Board — and as a schedulable item on Calendar.
+              </p>
+            </div>
+
+            <div>
+              <p className="text-[13px] font-semibold text-zinc-200">Schedule the week</p>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-zinc-400">
+                Open <strong className="text-zinc-200">/calendar</strong>, find the current week,
+                and slot your promoted items into the days you plan to film and post. Add a posting
+                window and time so you know exactly when each reel needs to go live.
+              </p>
+            </div>
+
+            <div>
+              <p className="text-[13px] font-semibold text-zinc-200">Link your most recent posted reel</p>
+              <p className="mt-1.5 text-[13px] leading-relaxed text-zinc-400">
+                If you already have posted reels, find the matching board card (or create one),
+                go to the Results tab, and link it to its Instagram post. Pull the live stats,
+                read the WIN/OK/FLOP verdict, generate a lesson. That&apos;s the full loop — and
+                now the Performance page actually shows your history.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-8 rounded-xl border border-[#3b82f6]/20 bg-[#3b82f6]/[0.04] p-5">
+            <p className="mb-4 font-mono text-[11px] font-bold uppercase tracking-[0.18em] text-[#60a5fa]">
+              Day 1 action plan
+            </p>
+            <ul className="space-y-3">
+              <li className="flex items-start gap-3">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" strokeWidth={1.75} />
+                <span className="text-[13px] leading-relaxed text-zinc-300">
+                  Go to <strong className="text-zinc-100">/ideas</strong> and add at least 5 ideas — manually or via PDF import
+                </span>
+              </li>
+              <li className="flex items-start gap-3">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" strokeWidth={1.75} />
+                <span className="text-[13px] leading-relaxed text-zinc-300">
+                  Open each one and fill in the hook, demand signal, and recognition score
+                </span>
+              </li>
+              <li className="flex items-start gap-3">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" strokeWidth={1.75} />
+                <span className="text-[13px] leading-relaxed text-zinc-300">
+                  Promote your 2–3 highest-scoring ideas to the board
+                </span>
+              </li>
+              <li className="flex items-start gap-3">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" strokeWidth={1.75} />
+                <span className="text-[13px] leading-relaxed text-zinc-300">
+                  Go to <strong className="text-zinc-100">/calendar</strong> and schedule those ideas into this week
+                </span>
+              </li>
+              <li className="flex items-start gap-3">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" strokeWidth={1.75} />
+                <span className="text-[13px] leading-relaxed text-zinc-300">
+                  Hit <strong className="text-zinc-100">Sync</strong> on the Overview page to load your Instagram data
+                </span>
+              </li>
+              <li className="flex items-start gap-3">
+                <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-400" strokeWidth={1.75} />
+                <span className="text-[13px] leading-relaxed text-zinc-300">
+                  Link your most recently posted reel and run the verdict to see the full loop in action
+                </span>
+              </li>
+            </ul>
+          </div>
+        </section>
+
         {/* Overview */}
         <section>
           <Eyebrow>What this is</Eyebrow>
