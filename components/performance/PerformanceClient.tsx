@@ -2,13 +2,13 @@
 
 import { useMemo, useState } from "react";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
+  BarChart, Bar, LineChart, Line, CartesianGrid, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell,
 } from "recharts";
 import {
   RefreshCw, Users, Eye, Heart, MessageCircle, Bookmark,
   Share2, ExternalLink, Film, Image as ImageIcon, LayoutGrid, Video,
 } from "lucide-react";
-import { InstagramCache, InstagramPost } from "@/lib/instagram";
+import { InstagramCache, InstagramPost, MetricPoint } from "@/lib/instagram";
 import { PageHeader } from "@/components/PageHeader";
 import { Button, Card } from "@/components/ui/controls";
 import { apiRefreshInstagram } from "@/lib/api";
@@ -58,7 +58,13 @@ function StatCard({ label, value, sub }: { label: string; value: string; sub?: s
   );
 }
 
-export function PerformanceClient({ initialData }: { initialData: InstagramCache | null }) {
+export function PerformanceClient({
+  initialData,
+  history,
+}: {
+  initialData: InstagramCache | null;
+  history: MetricPoint[];
+}) {
   const [data, setData] = useState<InstagramCache | null>(initialData);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -190,6 +196,77 @@ export function PerformanceClient({ initialData }: { initialData: InstagramCache
                   </span>
                 ))}
               </div>
+            </Card>
+          )}
+
+          {/* History trend */}
+          {history.length >= 2 ? (
+            <Card elevated className="animate-fade-in-up p-6 [animation-delay:120ms]">
+              <h2 className="mb-1 text-sm font-semibold text-zinc-200">Reach &amp; views over time</h2>
+              <p className="mb-4 text-xs text-zinc-500">
+                Daily totals from synced reels — builds up as snapshot history accumulates.
+              </p>
+              <div className="h-52 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <LineChart data={history} margin={{ top: 4, right: 8, bottom: 4, left: 8 }}>
+                    <CartesianGrid stroke="rgba(255,255,255,0.04)" vertical={false} />
+                    <XAxis
+                      dataKey="date"
+                      tick={{ fill: "#71717a", fontSize: 10 }}
+                      axisLine={{ stroke: "#27272a" }}
+                      tickLine={false}
+                      minTickGap={24}
+                      tickFormatter={(d: string) =>
+                        new Date(d).toLocaleDateString("en-GB", { day: "2-digit", month: "short" })
+                      }
+                    />
+                    <YAxis
+                      tick={{ fill: "#71717a", fontSize: 11 }}
+                      axisLine={false}
+                      tickLine={false}
+                      width={44}
+                      tickFormatter={fmt}
+                    />
+                    <Tooltip
+                      cursor={{ stroke: "rgba(255,255,255,0.1)" }}
+                      contentStyle={{
+                        background: "#1b1b27",
+                        border: "1px solid rgba(255,255,255,0.08)",
+                        borderRadius: 10,
+                        color: "#e4e4e7",
+                        fontSize: 12,
+                      }}
+                      labelFormatter={(d) =>
+                        new Date(String(d)).toLocaleDateString("en-GB", {
+                          day: "2-digit",
+                          month: "short",
+                          year: "2-digit",
+                        })
+                      }
+                      formatter={(v, n) => [fmt(Number(v ?? 0)), n === "views" ? "Views" : "Reach"]}
+                    />
+                    <Line type="monotone" dataKey="views" stroke="#3b82f6" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="reach" stroke="#06b6d4" strokeWidth={2} dot={false} />
+                  </LineChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-4">
+                <span className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                  <span className="h-2 w-2 rounded-full" style={{ background: "#3b82f6" }} />
+                  Views
+                </span>
+                <span className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+                  <span className="h-2 w-2 rounded-full" style={{ background: "#06b6d4" }} />
+                  Reach
+                </span>
+              </div>
+            </Card>
+          ) : (
+            <Card className="animate-fade-in-up p-5 [animation-delay:120ms]">
+              <p className="text-[13px] text-zinc-500">
+                <span className="font-medium text-zinc-300">Reach &amp; views over time</span> — collecting
+                history. This chart appears once a couple of syncs have been recorded.
+              </p>
             </Card>
           )}
 
