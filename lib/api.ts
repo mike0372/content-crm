@@ -240,20 +240,25 @@ export async function apiGenerateScript(
   return beats;
 }
 
+export interface ResearchSummary {
+  findings: string;
+  sources: string[];
+}
+
 // Complete an entire idea with AI: generates the script from the hook, then
 // every other section from the hook + script. Returns the same nested field
 // shape as autofill so the editor merges it the same way (never overwriting).
+// Pass research: true to run a web search phase first and get researchSummary back.
 export async function apiCompleteIdea(
-  ctx: ScriptGenContext
-): Promise<AutofillFields> {
-  const { fields } = await j<{ fields: AutofillFields }>(
+  ctx: ScriptGenContext & { research?: boolean }
+): Promise<{ fields: AutofillFields; researchSummary?: ResearchSummary }> {
+  return j<{ fields: AutofillFields; researchSummary?: ResearchSummary }>(
     await fetch("/api/ideas/complete", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(ctx),
     })
   );
-  return fields;
 }
 
 // ---- Global save ------------------------------------------------------------

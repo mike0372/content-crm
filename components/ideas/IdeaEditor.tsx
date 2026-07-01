@@ -22,6 +22,7 @@ import {
   Wand2,
   RefreshCw,
   ScrollText,
+  Globe,
 } from "lucide-react";
 import {
   ContentItem,
@@ -65,11 +66,13 @@ import {
   apiGenerateScript,
   apiCompleteIdea,
   AutofillFields,
+  ResearchSummary,
 } from "@/lib/api";
 import { uid } from "@/lib/factories";
 import { cn } from "@/lib/utils";
 import { LinkedReelSection } from "@/components/ideas/LinkedReelSection";
 import { FilmingScriptModal } from "@/components/ideas/FilmingScriptModal";
+import { ResearchSummaryModal } from "@/components/ideas/ResearchSummaryModal";
 
 // ---- AI autofill tag --------------------------------------------------------
 // Briefly marks a field the autofill just populated, then fades out.
@@ -963,6 +966,11 @@ export function IdeaEditor({ initial }: { initial: ContentItem }) {
   const [generatingScript, setGeneratingScript] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [scriptOpen, setScriptOpen] = useState(false);
+  const [showResearchDialog, setShowResearchDialog] = useState(false);
+  const [pendingResearch, setPendingResearch] = useState<{
+    fields: AutofillFields;
+    researchSummary: ResearchSummary;
+  } | null>(null);
 
   function update(patch: Partial<ContentItem>) {
     setItem((prev) => {
@@ -1234,11 +1242,31 @@ export function IdeaEditor({ initial }: { initial: ContentItem }) {
     }
   }
 
-  async function handleComplete() {
+  function applyCompleteFields(f: AutofillFields) {
+    const { patch, filled, sections } = mergeFields(f);
+    bumpExpand([...sections]);
+    if (filled.size === 0) {
+      showToast("Idea already complete — nothing to fill");
+    } else {
+      update(patch);
+      if (filled.has("script")) setScriptGenerated(true);
+      setAi({ fields: filled, fade: false });
+      setTimeout(() => setAi((a) => ({ ...a, fade: true })), 3000);
+      setTimeout(() => setAi({ fields: new Set(), fade: false }), 3600);
+      showToast(
+        `Completed idea — filled ${filled.size} field${
+          filled.size === 1 ? "" : "s"
+        } across ${sections.size} section${sections.size === 1 ? "" : "s"}`
+      );
+    }
+  }
+
+  async function handleComplete(research: boolean) {
     if (completing) return;
+    setShowResearchDialog(false);
     setCompleting(true);
     try {
-      const f = await apiCompleteIdea({
+      const result = await apiCompleteIdea({
         title: item.title,
         hookLine1: item.hook.line1,
         hookLine2: item.hook.line2,
@@ -1247,22 +1275,12 @@ export function IdeaEditor({ initial }: { initial: ContentItem }) {
         format: item.format,
         lengthTarget: item.lengthTarget,
         demandSignal: item.demandSignal.text,
+        research,
       });
-      const { patch, filled, sections } = mergeFields(f);
-      bumpExpand([...sections]);
-      if (filled.size === 0) {
-        showToast("Idea already complete — nothing to fill");
+      if (research && result.researchSummary) {
+        setPendingResearch({ fields: result.fields, researchSummary: result.researchSummary });
       } else {
-        update(patch);
-        if (filled.has("script")) setScriptGenerated(true);
-        setAi({ fields: filled, fade: false });
-        setTimeout(() => setAi((a) => ({ ...a, fade: true })), 3000);
-        setTimeout(() => setAi({ fields: new Set(), fade: false }), 3600);
-        showToast(
-          `Completed idea — filled ${filled.size} field${
-            filled.size === 1 ? "" : "s"
-          } across ${sections.size} section${sections.size === 1 ? "" : "s"}`
-        );
+        applyCompleteFields(result.fields);
       }
     } catch (err) {
       showToast(
@@ -1386,7 +1404,7 @@ export function IdeaEditor({ initial }: { initial: ContentItem }) {
             <Button
               variant="primary"
               size="sm"
-              onClick={handleComplete}
+              onClick={() => { if (!completing) setShowResearchDialog(true); }}
               disabled={completing}
             >
               {completing ? (
@@ -1503,6 +1521,90 @@ export function IdeaEditor({ initial }: { initial: ContentItem }) {
       {/* Filming script modal */}
       {scriptOpen && (
         <FilmingScriptModal item={item} onClose={() => setScriptOpen(false)} />
+      )}
+
+      {/* Research confirm dialog */}
+      {showResearchDialog && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowResearchDialog(false); }}
+        >
+          <div
+            className="w-full max-w-sm rounded-[18px] p-6"
+            style={{
+              background: "var(--surface)",
+              border: "1px solid rgba(59,130,246,0.2)",
+              boxShadow:
+                "0 0 0 1px rgba(59,130,246,.18), 0 0 80px rgba(59,130,246,.12), 0 40px 120px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.06)",
+            }}
+          >
+            <div
+              className="mb-1 text-[11px] font-bold uppercase tracking-[0.2em]"
+              style={{ color: "var(--blue)", fontFamily: "var(--font-mono)" }}
+            >
+              Complete with AI
+            </div>
+            <h3
+              className="mb-2 text-base font-bold"
+              style={{ color: "var(--text)", letterSpacing: "-0.02em" }}
+            >
+              Run web research first?
+            </h3>
+            <p className="mb-5 text-sm leading-relaxed" style={{ color: "var(--text-muted)" }}>
+              Sonnet will search the web for demand signals and content ideas related to your topic before generating. You&apos;ll review the findings before they&apos;re applied.
+            </p>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={() => handleComplete(true)}
+                className="flex items-center justify-center gap-2 rounded-[9px] py-2.5 text-sm font-semibold text-white transition-[box-shadow] focus-visible:outline-none focus-visible:ring-2"
+                style={{
+                  background: "linear-gradient(135deg, var(--blue), var(--sky))",
+                  boxShadow: "0 0 28px rgba(59,130,246,.40), 0 2px 8px rgba(14,165,233,.20)",
+                }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow =
+                    "0 0 52px rgba(59,130,246,.65), 0 8px 24px rgba(14,165,233,.30)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow =
+                    "0 0 28px rgba(59,130,246,.40), 0 2px 8px rgba(14,165,233,.20)";
+                }}
+              >
+                <Globe className="h-4 w-4" strokeWidth={1.75} />
+                Research first
+              </button>
+              <button
+                onClick={() => handleComplete(false)}
+                className="rounded-[9px] py-2.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2"
+                style={{ color: "var(--text-muted)", background: "rgba(255,255,255,0.05)" }}
+                onMouseEnter={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.09)";
+                  (e.currentTarget as HTMLButtonElement).style.color = "var(--text)";
+                }}
+                onMouseLeave={(e) => {
+                  (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.05)";
+                  (e.currentTarget as HTMLButtonElement).style.color = "var(--text-muted)";
+                }}
+              >
+                Generate now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Research summary modal — shown after research completes, before fields applied */}
+      {pendingResearch && (
+        <ResearchSummaryModal
+          title={item.title}
+          fields={pendingResearch.fields}
+          summary={pendingResearch.researchSummary}
+          onApply={(f) => {
+            setPendingResearch(null);
+            applyCompleteFields(f);
+          }}
+          onDiscard={() => setPendingResearch(null)}
+        />
       )}
     </>
   );
