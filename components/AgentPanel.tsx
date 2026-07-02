@@ -338,6 +338,7 @@ export function AgentPanel({ open, onClose }: { open: boolean; onClose: () => vo
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const greetingCalled = useRef(false);
 
   const hasUserMessages = messages.some((m) => m.role === "user");
 
@@ -351,8 +352,10 @@ export function AgentPanel({ open, onClose }: { open: boolean; onClose: () => vo
     if (open) textareaRef.current?.focus();
   }, [open]);
 
-  // Auto-greet on mount
+  // Auto-greet on mount (ref guard prevents StrictMode double-call)
   useEffect(() => {
+    if (greetingCalled.current) return;
+    greetingCalled.current = true;
     void fetchGreeting();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -457,16 +460,19 @@ export function AgentPanel({ open, onClose }: { open: boolean; onClose: () => vo
         body: JSON.stringify({ messages: apiMessages }),
       });
 
-      const data: AgentResponse = await res.json();
+      if (!res.ok) throw new Error(`Agent request failed (${res.status})`);
+      const data = (await res.json()) as Partial<AgentResponse>;
+      const content = data.content ?? "No response from Edward. Try again.";
+      const agentType = data.type ?? "message";
 
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: data.content,
-          agentType: data.type,
+          content,
+          agentType,
           diff: data.diff,
-          diffStatus: data.type === "diff" ? "pending" : undefined,
+          diffStatus: agentType === "diff" ? "pending" : undefined,
         },
       ]);
     } catch {
