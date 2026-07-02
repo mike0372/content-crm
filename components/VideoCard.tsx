@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Film, GripVertical, Trash2, Link2 } from "lucide-react";
+import { Film, GripVertical, Trash2, Link2, Check } from "lucide-react";
 import { Video } from "@/lib/types";
 import { PillarBadge } from "@/components/ui/Badge";
 import { PostingWindowBadge } from "@/components/ui/CardChips";
@@ -13,6 +13,7 @@ export function VideoCard({
   dragHandle,
   dragging,
   onDelete,
+  onToggleFocus,
 }: {
   video: Video;
   day?: string;
@@ -22,13 +23,17 @@ export function VideoCard({
   dragging?: boolean;
   compact?: boolean;
   onDelete?: (id: string) => void;
+  onToggleFocus?: (id: string) => void;
 }) {
   const hook = video.hook.line1 || video.title;
+  const focused = !!video.focused;
   return (
     <div
       className={cn(
-        "group relative rounded-lg border border-white/[0.06] bg-elevated px-2.5 py-2 transition-[transform,box-shadow,border-color] duration-150",
-        "shadow-[0_1px_4px_-2px_rgba(0,0,0,0.5)] hover:-translate-y-0.5 hover:border-white/[0.12] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.18),0_8px_24px_-12px_rgba(59,130,246,0.30)]",
+        "group relative rounded-lg border bg-elevated px-2.5 py-2 transition-[transform,box-shadow,border-color] duration-150",
+        focused
+          ? "border-orange-500/60 shadow-[0_0_0_1px_rgba(249,115,22,0.35),0_0_18px_rgba(249,115,22,0.14),0_1px_4px_-2px_rgba(0,0,0,0.5)] hover:-translate-y-0.5"
+          : "border-white/[0.06] shadow-[0_1px_4px_-2px_rgba(0,0,0,0.5)] hover:-translate-y-0.5 hover:border-white/[0.12] hover:shadow-[0_0_0_1px_rgba(59,130,246,0.18),0_8px_24px_-12px_rgba(59,130,246,0.30)]",
         dragging &&
           "rotate-[1.5deg] border-accent/40 shadow-[0_0_0_1px_rgba(59,130,246,0.25),0_20px_40px_-12px_rgba(59,130,246,0.45)]"
       )}
@@ -47,6 +52,25 @@ export function VideoCard({
           )}
         </div>
         <div className="flex items-center gap-0.5">
+          {onToggleFocus && (
+            <button
+              onClick={(e) => {
+                e.preventDefault();
+                onToggleFocus(video.id);
+              }}
+              aria-label={focused ? "Remove focus" : "Focus on this"}
+              title={focused ? "Focused — click to unfocus" : "Mark as focus"}
+              className={cn(
+                "-mt-0.5 flex items-center justify-center rounded-[5px] outline-none transition-[opacity,background,color,box-shadow] focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-orange-500/40",
+                focused
+                  ? "bg-orange-500 text-white shadow-[0_0_10px_rgba(249,115,22,0.45)]"
+                  : "border border-white/[0.15] text-transparent opacity-0 hover:border-orange-500/60 hover:text-orange-400/60 group-hover:opacity-100"
+              )}
+              style={{ width: 16, height: 16 }}
+            >
+              <Check className="h-3 w-3" strokeWidth={3} />
+            </button>
+          )}
           {onDelete && (
             <button
               onClick={(e) => {

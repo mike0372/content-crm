@@ -59,6 +59,31 @@ export async function apiDeleteVideo(id: string): Promise<void> {
   await fetch(`/api/videos/${id}`, { method: "DELETE" });
 }
 
+// ---- Scheduled date (calendar placement) --------------------------------------
+
+// Which calendar day the video sits on ("YYYY-MM-DD" or null).
+export async function apiGetVideoSchedule(id: string): Promise<string | null> {
+  const { date } = await j<{ date: string | null }>(
+    await fetch(`/api/videos/${id}/schedule`, { cache: "no-store" })
+  );
+  return date;
+}
+
+// Move the video to a calendar day (null = remove from calendar).
+export async function apiSetVideoSchedule(
+  id: string,
+  date: string | null
+): Promise<string | null> {
+  const res = await j<{ date: string | null }>(
+    await fetch(`/api/videos/${id}/schedule`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date }),
+    })
+  );
+  return res.date;
+}
+
 // ---- Calendar ---------------------------------------------------------------
 
 export async function apiGetCalendar(week: string): Promise<CalendarWeek> {

@@ -10,6 +10,8 @@ import {
   Loader2,
   Plus,
   Wand2,
+  CheckCircle2,
+  ExternalLink,
 } from "lucide-react";
 import {
   ContentType,
@@ -65,15 +67,21 @@ function IdeaResultCard({
   index,
   regenerating,
   saving,
+  saved,
+  savedId,
   onRegenerate,
   onSave,
+  onOpen,
 }: {
   idea: BrainstormedIdea;
   index: number;
   regenerating: boolean;
   saving: boolean;
+  saved: boolean;
+  savedId?: string;
   onRegenerate: () => void;
   onSave: () => void;
+  onOpen: () => void;
 }) {
   const ct = (idea.contentType as ContentType) ?? "reel_long";
   const { bg, text } = CONTENT_TYPE_COLORS[ct];
@@ -81,14 +89,16 @@ function IdeaResultCard({
 
   return (
     <div
-      className="animate-fade-in-up flex flex-col gap-3 rounded-xl border border-white/[0.06] bg-[#1a1a1a] p-4"
+      className="animate-fade-in-up flex flex-col gap-3 rounded-xl border bg-[#1a1a1a] p-4 transition-[border-color,box-shadow]"
       style={{
         animationDelay: `${index * 60}ms`,
-        boxShadow:
-          "0 0 0 1px rgba(59,130,246,.08), 0 8px 32px rgba(0,0,0,.4)",
+        borderColor: saved ? "rgba(34,197,94,.25)" : "rgba(255,255,255,.06)",
+        boxShadow: saved
+          ? "0 0 0 1px rgba(34,197,94,.10), 0 8px 32px rgba(0,0,0,.4)"
+          : "0 0 0 1px rgba(59,130,246,.08), 0 8px 32px rgba(0,0,0,.4)",
       }}
     >
-      {/* Type + pillar badges */}
+      {/* Type + pillar + saved badge */}
       <div className="flex items-center gap-2">
         <span className={cn("rounded-full px-2.5 py-0.5 text-[10px] font-semibold", bg, text)}>
           {CONTENT_TYPE_LABELS[ct]}
@@ -96,6 +106,12 @@ function IdeaResultCard({
         <span className={cn("text-[10px] font-medium", pillarText)}>
           {idea.pillar}
         </span>
+        {saved && (
+          <span className="ml-auto flex items-center gap-1 text-[10px] font-semibold text-[#22c55e]">
+            <CheckCircle2 className="h-3 w-3" strokeWidth={2} />
+            Saved
+          </span>
+        )}
       </div>
 
       {/* Title */}
@@ -125,25 +141,35 @@ function IdeaResultCard({
           ) : (
             <RefreshCw className="h-3 w-3" strokeWidth={1.75} />
           )}
-          Regenerate
+          {saved ? "Try new" : "Regenerate"}
         </button>
 
-        <button
-          onClick={onSave}
-          disabled={saving || regenerating}
-          className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold text-white outline-none transition-[background,box-shadow] focus-visible:ring-2 focus-visible:ring-[#3b82f6]/40 disabled:opacity-40"
-          style={{
-            background: "linear-gradient(135deg, #3b82f6, #0ea5e9)",
-            boxShadow: "0 0 16px rgba(59,130,246,.30), 0 2px 6px rgba(14,165,233,.15)",
-          }}
-        >
-          {saving ? (
-            <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.75} />
-          ) : (
-            <ArrowRight className="h-3 w-3" strokeWidth={1.75} />
-          )}
-          Save &amp; Edit
-        </button>
+        {saved ? (
+          <button
+            onClick={onOpen}
+            className="flex items-center gap-1.5 rounded-lg border border-[#22c55e]/30 px-3 py-1.5 text-[11px] font-semibold text-[#22c55e] outline-none transition-[background,box-shadow] hover:bg-[#22c55e]/10 focus-visible:ring-2 focus-visible:ring-[#22c55e]/40"
+          >
+            <ExternalLink className="h-3 w-3" strokeWidth={1.75} />
+            Open saved
+          </button>
+        ) : (
+          <button
+            onClick={onSave}
+            disabled={saving || regenerating}
+            className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11px] font-semibold text-white outline-none transition-[background,box-shadow] focus-visible:ring-2 focus-visible:ring-[#3b82f6]/40 disabled:opacity-40"
+            style={{
+              background: "linear-gradient(135deg, #3b82f6, #0ea5e9)",
+              boxShadow: "0 0 16px rgba(59,130,246,.30), 0 2px 6px rgba(14,165,233,.15)",
+            }}
+          >
+            {saving ? (
+              <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.75} />
+            ) : (
+              <ArrowRight className="h-3 w-3" strokeWidth={1.75} />
+            )}
+            Save idea
+          </button>
+        )}
       </div>
     </div>
   );
@@ -182,6 +208,9 @@ export function BrainstormModal({ onClose }: { onClose: () => void }) {
   const [regeneratingIndex, setRegeneratingIndex] = useState<number | null>(null);
   const [savingIndex, setSavingIndex] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // title → { id, title } for all ideas saved this session
+  const [savedMap, setSavedMap] = useState<Record<string, string>>({});
+  const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   // Manual add state
   const [manualTitle, setManualTitle] = useState("");
@@ -202,6 +231,11 @@ export function BrainstormModal({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     setManualType(selectedType);
   }, [selectedType]);
+
+  function flashSuccess(msg: string) {
+    setSuccessMsg(msg);
+    setTimeout(() => setSuccessMsg(null), 3500);
+  }
 
   async function handleGenerate() {
     if (!seedIdea.trim()) return;
@@ -230,7 +264,11 @@ export function BrainstormModal({ onClose }: { onClose: () => void }) {
         const idea = await apiRegenerateOne({
           seedIdea: seedIdea.trim(),
           contentType: selectedType,
-          excludeTitles: generatedIdeas.map((i) => i.title),
+          // exclude current slots + all saved titles to keep results fresh
+          excludeTitles: [
+            ...generatedIdeas.map((i) => i.title),
+            ...Object.keys(savedMap),
+          ],
         });
         setGeneratedIdeas((prev) => {
           const next = [...prev];
@@ -243,11 +281,12 @@ export function BrainstormModal({ onClose }: { onClose: () => void }) {
         setRegeneratingIndex(null);
       }
     },
-    [seedIdea, selectedType, generatedIdeas]
+    [seedIdea, selectedType, generatedIdeas, savedMap]
   );
 
   async function handleSave(index: number) {
     const idea = generatedIdeas[index];
+    if (savedMap[idea.title]) return;
     setSavingIndex(index);
     try {
       const created = await apiCreateIdea({
@@ -256,8 +295,12 @@ export function BrainstormModal({ onClose }: { onClose: () => void }) {
         contentType: (idea.contentType as ContentType) ?? "reel_long",
         hookLine1: idea.hookLine1,
       });
-      router.push(`/ideas/${created.id}`);
+      setSavedMap((prev) => ({ ...prev, [idea.title]: created.id }));
+      setError(null);
+      flashSuccess(`"${idea.title.slice(0, 40)}${idea.title.length > 40 ? "…" : ""}" saved!`);
     } catch {
+      setError("Couldn't save that idea — try again.");
+    } finally {
       setSavingIndex(null);
     }
   }
@@ -276,6 +319,8 @@ export function BrainstormModal({ onClose }: { onClose: () => void }) {
       setAddingManual(false);
     }
   }
+
+  const savedCount = Object.keys(savedMap).length;
 
   return (
     <div
@@ -314,6 +359,12 @@ export function BrainstormModal({ onClose }: { onClose: () => void }) {
           <div className="flex items-center gap-2.5">
             <Sparkles className="h-5 w-5 text-[#3b82f6]" strokeWidth={1.75} />
             <span className="text-sm font-semibold text-white">Brainstorm Ideas</span>
+            {savedCount > 0 && (
+              <span className="flex items-center gap-1 rounded-full bg-[#22c55e]/15 px-2 py-0.5 text-[10px] font-semibold text-[#22c55e]">
+                <CheckCircle2 className="h-2.5 w-2.5" strokeWidth={2} />
+                {savedCount} saved
+              </span>
+            )}
           </div>
           <button
             onClick={onClose}
@@ -377,7 +428,7 @@ export function BrainstormModal({ onClose }: { onClose: () => void }) {
             ) : (
               <Wand2 className="h-4 w-4" strokeWidth={1.75} />
             )}
-            {generating ? "Generating…" : "Generate Ideas"}
+            {generating ? "Generating…" : generatedIdeas.length > 0 ? "Regenerate All" : "Generate Ideas"}
           </button>
 
           {error && (
@@ -389,25 +440,49 @@ export function BrainstormModal({ onClose }: { onClose: () => void }) {
           {/* Results */}
           {(generating || generatedIdeas.length > 0) && (
             <div className="space-y-3">
-              <p className="text-[11px] font-bold uppercase tracking-[2.5px] text-[#3b82f6]"
-                style={{ fontFamily: "var(--font-mono)" }}>
-                Generated Ideas
-              </p>
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-bold uppercase tracking-[2.5px] text-[#3b82f6]"
+                  style={{ fontFamily: "var(--font-mono)" }}>
+                  Generated Ideas
+                </p>
+                {/* Success flash */}
+                <span
+                  className={cn(
+                    "flex items-center gap-1 text-[11px] font-medium text-[#22c55e] transition-[opacity,transform] duration-300",
+                    successMsg ? "opacity-100 translate-y-0" : "pointer-events-none opacity-0 translate-y-1"
+                  )}
+                >
+                  <CheckCircle2 className="h-3 w-3" strokeWidth={2} />
+                  {successMsg ?? ""}
+                </span>
+              </div>
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {generating
                   ? [0, 1, 2, 3].map((i) => <SkeletonCard key={i} index={i} />)
-                  : generatedIdeas.map((idea, i) => (
-                      <IdeaResultCard
-                        key={i}
-                        idea={idea}
-                        index={i}
-                        regenerating={regeneratingIndex === i}
-                        saving={savingIndex === i}
-                        onRegenerate={() => handleRegenerate(i)}
-                        onSave={() => handleSave(i)}
-                      />
-                    ))}
+                  : generatedIdeas.map((idea, i) => {
+                      const isSaved = Boolean(savedMap[idea.title]);
+                      const savedId = savedMap[idea.title];
+                      return (
+                        <IdeaResultCard
+                          key={`${idea.title}-${i}`}
+                          idea={idea}
+                          index={i}
+                          regenerating={regeneratingIndex === i}
+                          saving={savingIndex === i}
+                          saved={isSaved}
+                          savedId={savedId}
+                          onRegenerate={() => handleRegenerate(i)}
+                          onSave={() => handleSave(i)}
+                          onOpen={() => router.push(`/ideas/${savedId}`)}
+                        />
+                      );
+                    })}
               </div>
+              {savedCount > 0 && (
+                <p className="text-center text-[11px] text-[#6b7280]">
+                  {savedCount} idea{savedCount !== 1 ? "s" : ""} saved — close this modal to see them in your Ideas bank.
+                </p>
+              )}
             </div>
           )}
 

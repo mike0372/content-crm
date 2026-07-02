@@ -36,7 +36,15 @@ import {
 } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
-function SortableCard({ video, onDelete }: { video: Video; onDelete: (id: string) => void }) {
+function SortableCard({
+  video,
+  onDelete,
+  onToggleFocus,
+}: {
+  video: Video;
+  onDelete: (id: string) => void;
+  onToggleFocus: (id: string) => void;
+}) {
   const {
     attributes,
     listeners,
@@ -53,6 +61,7 @@ function SortableCard({ video, onDelete }: { video: Video; onDelete: (id: string
         video={video}
         dragHandle={{ ref: setActivatorNodeRef, ...listeners, ...attributes }}
         onDelete={onDelete}
+        onToggleFocus={onToggleFocus}
       />
     </div>
   );
@@ -64,11 +73,13 @@ function Column({
   status,
   videos,
   onDelete,
+  onToggleFocus,
   index = 0,
 }: {
   status: Status;
   videos: Video[];
   onDelete: (id: string) => void;
+  onToggleFocus: (id: string) => void;
   index?: number;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: status });
@@ -109,7 +120,7 @@ function Column({
               className="animate-fade-in"
               style={{ animationDelay: `${index * 70 + i * 35}ms` }}
             >
-              <SortableCard video={v} onDelete={onDelete} />
+              <SortableCard video={v} onDelete={onDelete} onToggleFocus={onToggleFocus} />
             </div>
           ))}
         </SortableContext>
@@ -321,6 +332,24 @@ export function BoardClient({ initialVideos }: { initialVideos: Video[] }) {
     }
   }
 
+  // Toggle the focus flag — optimistic, reverts on save failure.
+  async function toggleFocus(id: string) {
+    const current = videos.find((v) => v.id === id);
+    if (!current) return;
+    const updated = { ...current, focused: !current.focused };
+    mute();
+    setVideos((prev) => prev.map((v) => (v.id === id ? updated : v)));
+    try {
+      const saved = await apiSaveVideo(updated);
+      setVideos((prev) =>
+        prev.map((v) => (v.id === id ? { ...v, updatedAt: saved.updatedAt } : v))
+      );
+    } catch {
+      setVideos((prev) => prev.map((v) => (v.id === id ? current : v)));
+      showToast("Sync failed — retrying");
+    }
+  }
+
   async function addVideo() {
     mute();
     try {
@@ -424,7 +453,7 @@ export function BoardClient({ initialVideos }: { initialVideos: Video[] }) {
       >
         <div ref={scrollRef} className="grid grid-cols-5 items-start gap-4 px-7 py-5">
           {STATUSES.map((s, i) => (
-            <Column key={s} status={s} videos={byStatus[s]} onDelete={deleteVideo} index={i} />
+            <Column key={s} status={s} videos={byStatus[s]} onDelete={deleteVideo} onToggleFocus={toggleFocus} index={i} />
           ))}
         </div>
         <DragOverlay dropAnimation={null}>

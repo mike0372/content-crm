@@ -12,7 +12,7 @@ import {
   defaultCaptions,
   defaultChecklist,
 } from "./factories";
-import { isoWeek } from "./week";
+import { isoWeek, dateOfSlot, dayKeyOf, parseYMD } from "./week";
 import { getSupabase } from "./supabase";
 
 // ============================================================================
@@ -50,6 +50,7 @@ type ContentRow = {
   instagram_media_id: string | null;
   status_history: ContentItem["statusHistory"];
   priority: number | null;
+  focused: boolean | null;
   created_at: string;
   updated_at: string;
 };
@@ -82,6 +83,7 @@ function rowToItem(r: ContentRow): ContentItem {
     instagramMediaId: r.instagram_media_id ?? null,
     statusHistory: r.status_history ?? [],
     priority: r.priority ?? Date.parse(r.created_at),
+    focused: r.focused ?? false,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -115,6 +117,7 @@ function itemToRow(i: ContentItem): ContentRow {
     instagram_media_id: i.instagramMediaId ?? null,
     status_history: i.statusHistory,
     priority: i.priority ?? Date.parse(i.createdAt),
+    focused: i.focused ?? false,
     created_at: i.createdAt,
     updated_at: i.updatedAt,
   };
@@ -286,6 +289,66 @@ export async function saveCalendar(cal: CalendarWeek): Promise<CalendarWeek> {
   );
   if (error) throw new Error(`saveCalendar: ${error.message}`);
   return cal;
+}
+
+// ---- Scheduled date (calendar placement) -------------------------------------
+// An item's "upload date" is which calendars[week].days[day] array holds its id.
+// These helpers let the video editor read and move that placement directly, so
+// the editor and the calendar page always agree.
+
+// Find the concrete date ("YYYY-MM-DD") an item is scheduled on, or null.
+export async function findScheduledDate(videoId: string): Promise<string | null> {
+  const { data, error } = await getSupabase().from("calendars").select("week, days");
+  if (error) throw new Error(`findScheduledDate: ${error.message}`);
+  for (const row of data ?? []) {
+    const days = normalizeDays(row.days);
+    for (const k of DAY_KEYS) {
+      if (days[k].includes(videoId)) return dateOfSlot(row.week, k);
+    }
+  }
+  return null;
+}
+
+// Move an item to a new date (or unschedule it with null). Removes the id from
+// every week it currently sits in, then appends it to the target week/day.
+export async function scheduleItemOnDate(
+  videoId: string,
+  date: string | null
+): Promise<string | null> {
+  const sb = getSupabase();
+  const { data, error } = await sb.from("calendars").select("week, days");
+  if (error) throw new Error(`scheduleItemOnDate: ${error.message}`);
+
+  // 1. Remove from any week that currently contains the id.
+  for (const row of data ?? []) {
+    const days = normalizeDays(row.days);
+    let changed = false;
+    for (const k of DAY_KEYS) {
+      if (days[k].includes(videoId)) {
+        days[k] = days[k].filter((id) => id !== videoId);
+        changed = true;
+      }
+    }
+    if (changed) {
+      const { error: upErr } = await sb
+        .from("calendars")
+        .update({ days })
+        .eq("week", row.week);
+      if (upErr) throw new Error(`scheduleItemOnDate: ${upErr.message}`);
+    }
+  }
+
+  if (!date) return null;
+
+  // 2. Add to the target week/day.
+  const parsed = parseYMD(date);
+  if (!parsed) throw new Error(`scheduleItemOnDate: invalid date "${date}"`);
+  const wk = isoWeek(parsed);
+  const dayKey = dayKeyOf(parsed);
+  const cal = await getCalendar(wk);
+  if (!cal.days[dayKey].includes(videoId)) cal.days[dayKey].push(videoId);
+  await saveCalendar(cal);
+  return dateOfSlot(wk, dayKey);
 }
 
 // ---- Performance log --------------------------------------------------------

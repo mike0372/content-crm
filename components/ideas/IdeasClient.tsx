@@ -11,6 +11,7 @@ import {
   FileUp,
   ArrowUpRight,
   Sparkles,
+  Check,
 } from "lucide-react";
 import {
   ContentItem,
@@ -35,6 +36,7 @@ import {
   apiCreateIdea,
   apiImportIdeas,
   apiGetIdeas,
+  apiSaveIdea,
 } from "@/lib/api";
 import { BrainstormModal } from "./BrainstormModal";
 import { cn } from "@/lib/utils";
@@ -111,18 +113,28 @@ function IdeaCard({
   idea,
   onDelete,
   deleting,
+  onToggleFocus,
 }: {
   idea: ContentItem;
   onDelete: (id: string) => void;
   deleting: boolean;
+  onToggleFocus: (id: string) => void;
 }) {
   const readiness = calcReadiness(idea);
   const hookPreview = idea.hook?.line1 || "";
   const ct = idea.contentType ?? "reel_long";
   const { bg, text } = CONTENT_TYPE_COLORS[ct];
+  const focused = !!idea.focused;
 
   return (
-    <div className="hover-lift group relative rounded-xl border border-white/[0.06] bg-surface shadow-[0_1px_3px_rgba(0,0,0,0.4)] hover:border-white/[0.12]">
+    <div
+      className={cn(
+        "hover-lift group relative rounded-xl border bg-surface",
+        focused
+          ? "border-orange-500/60 shadow-[0_0_0_1px_rgba(249,115,22,0.35),0_0_24px_rgba(249,115,22,0.12),0_1px_3px_rgba(0,0,0,0.4)]"
+          : "border-white/[0.06] shadow-[0_1px_3px_rgba(0,0,0,0.4)] hover:border-white/[0.12]"
+      )}
+    >
       <Link
         href={`/ideas/${idea.id}`}
         className="block p-5 outline-none focus-visible:rounded-xl focus-visible:ring-2 focus-visible:ring-accent/40"
@@ -170,6 +182,24 @@ function IdeaCard({
           </span>
         </div>
       </Link>
+
+      {/* Focus toggle (outside the Link) */}
+      <button
+        onClick={(e) => {
+          e.preventDefault();
+          onToggleFocus(idea.id);
+        }}
+        aria-label={focused ? "Remove focus" : "Focus on this idea"}
+        title={focused ? "Focused — click to unfocus" : "Mark as focus"}
+        className={cn(
+          "absolute right-9 top-2 flex h-[22px] w-[22px] items-center justify-center rounded-md outline-none transition-[opacity,background,color,box-shadow] focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-orange-500/40",
+          focused
+            ? "bg-orange-500 text-white shadow-[0_0_12px_rgba(249,115,22,0.45)]"
+            : "border border-white/[0.15] text-transparent opacity-0 hover:border-orange-500/60 hover:text-orange-400/60 group-hover:opacity-100"
+        )}
+      >
+        <Check className="h-3.5 w-3.5" strokeWidth={3} />
+      </button>
 
       {/* Delete button (outside the Link) */}
       <button
@@ -251,6 +281,21 @@ export function IdeasClient({ initialIdeas }: { initialIdeas: ContentItem[] }) {
       router.push(`/ideas/${idea.id}`);
     } catch {
       setCreating(false);
+    }
+  }
+
+  // Toggle the focus flag — optimistic, reverts on save failure.
+  async function handleToggleFocus(id: string) {
+    const current = ideas.find((i) => i.id === id);
+    if (!current) return;
+    const updated = { ...current, focused: !current.focused };
+    mute();
+    setIdeas((prev) => prev.map((i) => (i.id === id ? updated : i)));
+    try {
+      await apiSaveIdea(updated);
+    } catch {
+      setIdeas((prev) => prev.map((i) => (i.id === id ? current : i)));
+      showToast("Sync failed — retrying");
     }
   }
 
@@ -480,6 +525,7 @@ export function IdeasClient({ initialIdeas }: { initialIdeas: ContentItem[] }) {
               idea={idea}
               onDelete={handleDelete}
               deleting={deletingId === idea.id}
+              onToggleFocus={handleToggleFocus}
             />
           </div>
         ))}

@@ -238,6 +238,9 @@ export interface ContentItem {
   // Board ordering within a status column — lower sorts higher (top = priority).
   // Defaults to the createdAt epoch so existing order is preserved.
   priority: number;
+  // "Focus" flag — user-picked items to concentrate on. Shown as an orange
+  // outline on Board and Ideas cards.
+  focused: boolean;
   createdAt: string;
   updatedAt: string;
 }

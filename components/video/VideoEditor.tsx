@@ -46,6 +46,8 @@ import {
   apiGetInstagram,
   apiSyncInstagram,
   apiGenerateLesson,
+  apiGetVideoSchedule,
+  apiSetVideoSchedule,
   type IgCache,
   type IgPost,
 } from "@/lib/api";
@@ -210,6 +212,60 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+// Upload date = the video's placement on the calendar (calendars table), not a
+// column on the item itself. Reads the current slot on mount; writing moves the
+// item across weeks/days server-side, so the Calendar page stays in sync.
+function ScheduledDateField({ videoId }: { videoId: string }) {
+  const [date, setDate] = useState<string>("");
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    apiGetVideoSchedule(videoId)
+      .then((d) => { if (!cancelled) setDate(d ?? ""); })
+      .catch(() => { if (!cancelled) setError(true); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [videoId]);
+
+  async function save(next: string) {
+    setDate(next);
+    setSaving(true);
+    setError(false);
+    try {
+      const placed = await apiSetVideoSchedule(videoId, next || null);
+      setDate(placed ?? "");
+    } catch {
+      setError(true);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Field label="Upload date (calendar)">
+      <div className="flex items-center gap-2">
+        <Input
+          type="date"
+          value={date}
+          disabled={loading}
+          onChange={(e) => save(e.target.value)}
+        />
+        {saving && <Loader2 className="h-4 w-4 flex-shrink-0 animate-spin text-[#3b82f6]" strokeWidth={1.75} />}
+      </div>
+      <p className="mt-1.5 text-[11px] text-zinc-600">
+        {error
+          ? "Couldn't update the calendar — try again."
+          : date
+          ? "Shown on the Calendar page. Clear to unschedule."
+          : "Not on the calendar yet — pick a day to schedule it."}
+      </p>
+    </Field>
+  );
+}
+
 function MetaTab({ video, update }: TabProps) {
   return (
     <Card elevated className="p-6">
@@ -254,6 +310,7 @@ function MetaTab({ video, update }: TabProps) {
             ))}
           </Select>
         </Field>
+        <ScheduledDateField videoId={video.id} />
         <Field label="Scheduled time">
           <Input type="time" value={video.scheduledTime} onChange={(e) => update({ scheduledTime: e.target.value })} />
         </Field>

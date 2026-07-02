@@ -140,6 +140,7 @@ export function createVideo(input: NewVideoInput = {}): ContentItem {
     instagramMediaId: null,
     statusHistory: [{ status, timestamp: ts }],
     priority: Date.parse(ts),
+    focused: false,
     createdAt: ts,
     updatedAt: ts,
   };
@@ -211,6 +212,7 @@ export function createIdeaItem(input: NewIdeaInput = {}): ContentItem {
     instagramMediaId: null,
     statusHistory: [{ status: "TO_SHOOT", timestamp: ts }],
     priority: Date.parse(ts),
+    focused: false,
     createdAt: ts,
     updatedAt: ts,
   };

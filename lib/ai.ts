@@ -103,6 +103,28 @@ function client(): Anthropic {
 
 type CreateParams = Omit<Anthropic.MessageCreateParamsNonStreaming, "model">;
 
+// Strip unpaired UTF-16 surrogates (e.g. an emoji cut in half by .slice on an
+// Instagram caption or title). A lone surrogate makes the request body invalid
+// JSON and the API rejects the whole call with a 400 ("no low surrogate").
+// Applied centrally so every route that embeds DB/user text is covered.
+function wellFormed(s: string): string {
+  return s.replace(
+    /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g,
+    ""
+  );
+}
+
+function sanitizeParams(params: CreateParams): CreateParams {
+  return {
+    ...params,
+    system: typeof params.system === "string" ? wellFormed(params.system) : params.system,
+    messages: params.messages.map((m) => ({
+      ...m,
+      content: typeof m.content === "string" ? wellFormed(m.content) : m.content,
+    })),
+  };
+}
+
 // Every Claude call funnels through here. `route` attributes the spend for the
 // cost panel; `tier` selects the model from central config above.
 export async function createMessage(
@@ -116,7 +138,7 @@ export async function createMessage(
   }
 
   const model = MODELS[opts.tier];
-  const res = await client().messages.create({ ...params, model });
+  const res = await client().messages.create({ ...sanitizeParams(params), model });
   await logUsage(opts.route, model, res.usage?.input_tokens ?? 0, res.usage?.output_tokens ?? 0);
   return res;
 }
