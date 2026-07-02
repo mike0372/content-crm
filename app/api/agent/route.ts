@@ -169,8 +169,11 @@ export async function POST(req: NextRequest) {
   }
 
   let messages: unknown;
+  let greeting = false;
   try {
-    ({ messages } = (await req.json()) as { messages?: unknown });
+    const body = (await req.json()) as { messages?: unknown; greeting?: boolean };
+    messages = body.messages;
+    greeting = body.greeting === true;
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
@@ -198,25 +201,40 @@ export async function POST(req: NextRequest) {
       getInstagramCache(),
     ]);
 
-    const systemPrompt = buildSystemPrompt(
-      videos,
-      calendar,
-      ideas,
-      performance,
-      instagram,
-      lastUserText(history)
-    );
+    if (greeting) {
+      const vCount = videos.length;
+      const iCount = ideas.length;
+      const followers = instagram?.followersCount ?? 0;
+      const greetResponse = await createMessage(
+        {
+          max_tokens: 80,
+          system: `You are Edward, a direct AI assistant for an Instagram Reels studio. Produce ONE greeting line only — like Alfred greeting Batman. Caveman short. Include 1-2 numbers from: ${vCount} videos in production, ${iCount} ideas banked, ${followers} followers. Address as Sir. No "Hello", no period required. Output raw JSON only: {"type":"message","content":"<one line>"}`,
+          messages: [{ role: "user", content: "greet" }],
+        },
+        { route: "agent.greeting", tier: "fast" }
+      );
+      raw = greetResponse.content[0].type === "text" ? greetResponse.content[0].text : '{"type":"message","content":"Ready, Sir."}';
+    } else {
+      const systemPrompt = buildSystemPrompt(
+        videos,
+        calendar,
+        ideas,
+        performance,
+        instagram,
+        lastUserText(history)
+      );
 
-    const response = await createMessage(
-      {
-        max_tokens: 2048,
-        system: systemPrompt,
-        messages: history,
-      },
-      { route: "agent", tier: "fast" }
-    );
+      const response = await createMessage(
+        {
+          max_tokens: 2048,
+          system: systemPrompt,
+          messages: history,
+        },
+        { route: "agent", tier: "fast" }
+      );
 
-    raw = response.content[0].type === "text" ? response.content[0].text : "";
+      raw = response.content[0].type === "text" ? response.content[0].text : "";
+    }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: `Agent failed: ${msg}` }, { status: 500 });

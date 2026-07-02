@@ -32,6 +32,7 @@ interface Message {
   agentType?: "question" | "diff" | "message";
   diff?: DiffData;
   diffStatus?: "pending" | "approved" | "rejected" | "applying" | "done";
+  greeting?: boolean; // display-only opener — excluded from API history
 }
 
 interface ConvoMeta {
@@ -323,17 +324,11 @@ function ConversationsOverlay({
 
 // ---- Main component ---------------------------------------------------------
 
-const WELCOME: Message = {
-  role: "assistant",
-  content:
-    "Hi, I'm Edward — your AI assistant. Ask me anything about your content, or tell me what you'd like to change.",
-  agentType: "message",
-};
-
 export function AgentPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const [messages, setMessages] = useState<Message[]>([WELCOME]);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [greetingPending, setGreetingPending] = useState(false);
 
   const [historyOpen, setHistoryOpen] = useState(false);
   const [convos, setConvos] = useState<ConvoMeta[]>([]);
@@ -349,12 +344,44 @@ export function AgentPanel({ open, onClose }: { open: boolean; onClose: () => vo
   // Scroll to bottom when messages change
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
+  }, [messages, loading, greetingPending]);
 
   // Focus input when panel opens
   useEffect(() => {
     if (open) textareaRef.current?.focus();
   }, [open]);
+
+  // Auto-greet on mount
+  useEffect(() => {
+    void fetchGreeting();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function fetchGreeting() {
+    setGreetingPending(true);
+    try {
+      const res = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [{ role: "user", content: "__greet__" }],
+          greeting: true,
+        }),
+      });
+      const data: AgentResponse = await res.json();
+      setMessages((prev) => {
+        if (prev.some((m) => m.role === "user")) return prev; // user already started
+        return [{ role: "assistant", content: data.content, agentType: data.type, greeting: true }];
+      });
+    } catch {
+      setMessages((prev) => {
+        if (prev.some((m) => m.role === "user")) return prev;
+        return [{ role: "assistant", content: "Ready, Sir.", agentType: "message", greeting: true }];
+      });
+    } finally {
+      setGreetingPending(false);
+    }
+  }
 
   // Fetch history when overlay opens
   useEffect(() => {
@@ -418,7 +445,7 @@ export function AgentPanel({ open, onClose }: { open: boolean; onClose: () => vo
 
     try {
       const apiMessages = next
-        .filter((m) => m.role === "user" || (m.role === "assistant" && m.content))
+        .filter((m) => !m.greeting && (m.role === "user" || (m.role === "assistant" && m.content)))
         .map((m) => ({ role: m.role, content: m.content }));
 
       const res = await fetch("/api/agent", {
@@ -502,8 +529,9 @@ export function AgentPanel({ open, onClose }: { open: boolean; onClose: () => vo
   }
 
   function handleReset() {
-    setMessages([WELCOME]);
+    setMessages([]);
     setInput("");
+    void fetchGreeting();
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
@@ -603,7 +631,7 @@ export function AgentPanel({ open, onClose }: { open: boolean; onClose: () => vo
             />
           ))}
 
-          {loading && (
+          {(loading || greetingPending) && (
             <div className="flex items-start gap-2">
               <div className="mt-0.5 flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[#3b82f6] to-[#06b6d4] shadow-[0_0_12px_rgba(59,130,246,0.35)]">
                 <Sparkles className="h-3 w-3 text-white" strokeWidth={2} />
