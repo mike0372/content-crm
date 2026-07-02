@@ -46,7 +46,7 @@ interface ConvoMeta {
 // ---- Helpers ----------------------------------------------------------------
 
 function renderMarkdown(text: string) {
-  return text.split("\n").map((line, li) => (
+  return (text ?? "").split("\n").map((line, li) => (
     <Fragment key={li}>
       {li > 0 && <br />}
       {line.split(/\*\*(.+?)\*\*/g).map((part, pi) =>
@@ -368,10 +368,13 @@ export function AgentPanel({ open, onClose }: { open: boolean; onClose: () => vo
           greeting: true,
         }),
       });
-      const data: AgentResponse = await res.json();
+      if (!res.ok) throw new Error("greeting failed");
+      const data = (await res.json()) as Partial<AgentResponse>;
+      const content = data.content ?? "Ready, Sir.";
+      const agentType = data.type ?? "message";
       setMessages((prev) => {
-        if (prev.some((m) => m.role === "user")) return prev; // user already started
-        return [{ role: "assistant", content: data.content, agentType: data.type, greeting: true }];
+        if (prev.some((m) => m.role === "user")) return prev;
+        return [{ role: "assistant", content, agentType, greeting: true }];
       });
     } catch {
       setMessages((prev) => {
