@@ -132,12 +132,14 @@ export async function POST(req: NextRequest) {
         .replace("{title}", fill(ctx.title))
         .replace("{pillar}", fill(ctx.pillar));
 
-      const researchMsg = await client.messages.create({
-        model: "claude-sonnet-4-6",
-        max_tokens: 2048,
-        tools: [{ name: "web_search" as const, type: "web_search_20260209" as const }],
-        messages: [{ role: "user", content: researchPrompt }],
-      });
+      const researchMsg = await createMessage(
+        {
+          max_tokens: 2048,
+          tools: [{ name: "web_search" as const, type: "web_search_20260209" as const }],
+          messages: [{ role: "user", content: researchPrompt }],
+        },
+        { route: "ideas.complete.research", tier: "smart" }
+      );
 
       // Collect Claude's text analysis and URLs from search result blocks
       const textParts: string[] = [];
