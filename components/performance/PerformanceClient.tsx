@@ -103,10 +103,10 @@ function AnalystCard() {
                 disabled={loading}
                 className={cn(
                   "rounded-[7px] px-2.5 py-1 text-[11px] font-medium outline-none transition-colors duration-200",
-                  "focus-visible:ring-2 focus-visible:ring-[#3b82f6]/40 disabled:opacity-50",
+                  "focus-visible:ring-2 focus-visible:ring-[#3b82f6]/40 disabled:opacity-50 active:scale-[0.97]",
                   range === r.value
-                    ? "bg-[#3b82f6]/15 text-[#60a5fa]"
-                    : "text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]"
+                    ? "bg-[#3b82f6]/15 text-[#60a5fa] active:bg-[#3b82f6]/25"
+                    : "text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03] active:bg-white/[0.06]"
                 )}
               >
                 {r.label}
