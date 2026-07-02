@@ -396,6 +396,34 @@ export async function apiRegenerateOne(body: {
   return idea;
 }
 
+// ---- Performance analysis (sub-agent) ----------------------------------------
+
+export interface PerformanceInsight { finding: string; why: string }
+export type PerformanceRange = "week" | "month" | "all";
+export interface PerformanceAnalysis {
+  insights: {
+    doubleDown: PerformanceInsight[];
+    stopDoing: PerformanceInsight[];
+    nextReel: string;
+  };
+  range: PerformanceRange;
+  sampleSize: number;
+  totalPosts: number;
+  generatedAt: string;
+}
+
+export async function apiAnalyzePerformance(
+  range: PerformanceRange = "all"
+): Promise<PerformanceAnalysis> {
+  return j<PerformanceAnalysis>(
+    await fetch("/api/performance/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ range }),
+    })
+  );
+}
+
 // ---- Results lesson ---------------------------------------------------------
 
 // Generate a one-line "lesson learned" from the linked reel's metric verdicts.

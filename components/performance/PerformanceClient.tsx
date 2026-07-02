@@ -7,11 +7,12 @@ import {
 import {
   RefreshCw, Users, Eye, Heart, MessageCircle, Bookmark,
   Share2, ExternalLink, Film, Image as ImageIcon, LayoutGrid, Video,
+  Sparkles, TrendingUp, TrendingDown, ArrowRight, Loader2,
 } from "lucide-react";
 import { InstagramCache, InstagramPost, MetricPoint } from "@/lib/instagram";
 import { PageHeader } from "@/components/PageHeader";
 import { Button, Card } from "@/components/ui/controls";
-import { apiRefreshInstagram } from "@/lib/api";
+import { apiRefreshInstagram, apiAnalyzePerformance, type PerformanceAnalysis, type PerformanceRange } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 function fmt(n: number): string {
@@ -47,6 +48,135 @@ const TYPE_COLOR: Record<InstagramPost["mediaType"], string> = {
   IMAGE: "#34d399",
   CAROUSEL_ALBUM: "#fb923c",
 };
+
+// ---- Performance Analyst card ------------------------------------------------
+
+const RANGES: { value: PerformanceRange; label: string }[] = [
+  { value: "week", label: "This week" },
+  { value: "month", label: "This month" },
+  { value: "all", label: "All time" },
+];
+
+const RANGE_LABEL: Record<PerformanceRange, string> = {
+  week: "this week",
+  month: "this month",
+  all: "all time",
+};
+
+function AnalystCard() {
+  const [result, setResult] = useState<PerformanceAnalysis | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [range, setRange] = useState<PerformanceRange>("all");
+
+  async function run() {
+    setLoading(true);
+    setError(null);
+    try {
+      setResult(await apiAnalyzePerformance(range));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Analysis failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <Card elevated className="animate-fade-in-up p-6 [animation-delay:40ms]">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-[#3b82f6]" strokeWidth={1.75} />
+          <h2 className="text-sm font-semibold text-zinc-200">Performance Analyst</h2>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <div
+            role="radiogroup"
+            aria-label="Time window"
+            className="inline-flex rounded-[9px] border border-white/[0.07] bg-white/[0.02] p-0.5"
+          >
+            {RANGES.map((r) => (
+              <button
+                key={r.value}
+                role="radio"
+                aria-checked={range === r.value}
+                onClick={() => setRange(r.value)}
+                disabled={loading}
+                className={cn(
+                  "rounded-[7px] px-2.5 py-1 text-[11px] font-medium outline-none transition-colors duration-200",
+                  "focus-visible:ring-2 focus-visible:ring-[#3b82f6]/40 disabled:opacity-50",
+                  range === r.value
+                    ? "bg-[#3b82f6]/15 text-[#60a5fa]"
+                    : "text-zinc-500 hover:text-zinc-300 hover:bg-white/[0.03]"
+                )}
+              >
+                {r.label}
+              </button>
+            ))}
+          </div>
+          <Button variant="ghost" onClick={run} disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" strokeWidth={1.75} /> : <Sparkles className="h-4 w-4" strokeWidth={1.75} />}
+            {loading ? "Analyzing…" : result ? "Re-analyze" : "Analyze"}
+          </Button>
+        </div>
+      </div>
+
+      {error && <p className="mt-3 text-[12px] text-rose-300">{error}</p>}
+
+      {!result && !error && !loading && (
+        <p className="mt-2 text-[12px] text-zinc-500">
+          Finds what actually wins — grouped by pillar, format, hook type, and posting day from your real synced metrics. Pick a window, then Analyze. Needs a few reels linked via Results → Link reel.
+        </p>
+      )}
+
+      {result && (
+        <div className="mt-4 space-y-4">
+          <p className="text-[11px] text-zinc-600">
+            {RANGE_LABEL[result.range]} · {result.sampleSize} linked reels of {result.totalPosts} synced.
+          </p>
+
+          {result.insights.doubleDown?.length > 0 && (
+            <div>
+              <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-emerald-400">
+                <TrendingUp className="h-3 w-3" /> Double down
+              </p>
+              <ul className="space-y-1.5">
+                {result.insights.doubleDown.map((it, i) => (
+                  <li key={i} className="rounded-lg bg-emerald-500/[0.06] px-3 py-2 text-[12px]">
+                    <span className="font-medium text-zinc-200">{it.finding}</span>
+                    <span className="block text-zinc-500">{it.why}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {result.insights.stopDoing?.length > 0 && (
+            <div>
+              <p className="mb-1.5 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-rose-400">
+                <TrendingDown className="h-3 w-3" /> Stop doing
+              </p>
+              <ul className="space-y-1.5">
+                {result.insights.stopDoing.map((it, i) => (
+                  <li key={i} className="rounded-lg bg-rose-500/[0.06] px-3 py-2 text-[12px]">
+                    <span className="font-medium text-zinc-200">{it.finding}</span>
+                    <span className="block text-zinc-500">{it.why}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {result.insights.nextReel && (
+            <div className="flex items-start gap-2 rounded-lg border border-[#3b82f6]/20 bg-[#3b82f6]/[0.06] px-3 py-2.5 text-[12px]">
+              <ArrowRight className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[#3b82f6]" strokeWidth={2} />
+              <span className="text-zinc-200">{result.insights.nextReel}</span>
+            </div>
+          )}
+        </div>
+      )}
+    </Card>
+  );
+}
 
 function StatCard({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
@@ -146,6 +276,8 @@ export function PerformanceClient({
             <StatCard label="Avg eng. rate" value={`${avgEng.toFixed(2)}%`} sub="likes+comments+saves+shares" />
             <StatCard label="Posts tracked" value={String(sorted.length)} sub="from this account" />
           </div>
+
+          <AnalystCard />
 
           {/* Chart */}
           {chartData.length > 0 && (
