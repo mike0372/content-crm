@@ -450,9 +450,19 @@ export function AgentPanel({ open, onClose }: { open: boolean; onClose: () => vo
     setLoading(true);
 
     try {
-      const apiMessages = next
+      const rawMessages = next
         .filter((m) => !m.greeting && (m.role === "user" || (m.role === "assistant" && m.content)))
         .map((m) => ({ role: m.role, content: m.content }));
+
+      // Claude's API requires strictly alternating user/assistant turns. Diff
+      // approve/reject append a second assistant message with no user turn in
+      // between, so collapse consecutive same-role turns before sending.
+      const apiMessages = rawMessages.reduce<typeof rawMessages>((acc, m) => {
+        const last = acc[acc.length - 1];
+        if (last && last.role === m.role) last.content = `${last.content}\n\n${m.content}`;
+        else acc.push({ ...m });
+        return acc;
+      }, []);
 
       const res = await fetch("/api/agent", {
         method: "POST",
@@ -460,7 +470,10 @@ export function AgentPanel({ open, onClose }: { open: boolean; onClose: () => vo
         body: JSON.stringify({ messages: apiMessages }),
       });
 
-      if (!res.ok) throw new Error(`Agent request failed (${res.status})`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        throw new Error(body?.error ?? `Agent request failed (${res.status})`);
+      }
       const data = (await res.json()) as Partial<AgentResponse>;
       const content = data.content ?? "No response from Edward. Try again.";
       const agentType = data.type ?? "message";
@@ -475,7 +488,8 @@ export function AgentPanel({ open, onClose }: { open: boolean; onClose: () => vo
           diffStatus: agentType === "diff" ? "pending" : undefined,
         },
       ]);
-    } catch {
+    } catch (err) {
+      console.error("Edward sendMessage failed:", err);
       setMessages((prev) => [
         ...prev,
         {

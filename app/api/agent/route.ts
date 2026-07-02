@@ -236,6 +236,7 @@ export async function POST(req: NextRequest) {
       raw = response.content[0].type === "text" ? response.content[0].text : "";
     }
   } catch (err) {
+    console.error("Edward agent route failed:", err);
     const msg = err instanceof Error ? err.message : String(err);
     return NextResponse.json({ error: `Agent failed: ${msg}` }, { status: 500 });
   }
